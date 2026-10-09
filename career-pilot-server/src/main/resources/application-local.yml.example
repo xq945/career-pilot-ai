@@ -1,0 +1,35 @@
+# ============================================================
+# 本地开发配置模板
+#
+# 使用步骤：
+#   1. 在同目录下复制本文件，重命名为 application-local.yml
+#   2. 按下方注释填入真实值
+#
+# 注意：
+#   - application-local.yml 已被 .gitignore 忽略，不会进入版本库
+#   - 真实凭据只写在该文件里，不要写进 application.yml 或本模板
+#   - 相关约定见《系统架构设计》第 7、9 节
+# ============================================================
+
+spring:
+  datasource:
+    # MySQL 账号。库名与连接串在 application.yml 中，通常无需改动
+    username: root
+    password: 请填写数据库密码
+
+  ai:
+    deepseek:
+      # DeepSeek API Key，获取地址 https://platform.deepseek.com
+      #
+      # 注意：Spring AI 的自动配置强制要求该项非空，缺失会导致应用启动失败
+      # （现象与解法见《问题记录 · 配置与启动》第 1 节）
+      api-key: 请填写 DeepSeek API Key
+
+app:
+  jwt:
+    # JWT 签名密钥，HS256 要求不少于 32 字节（256 bit）。
+    # 生成方式：openssl rand -base64 48
+    #
+    # 提示：本项一旦泄露，他人即可伪造任意用户的 Token，且服务端不做 Token 撤销，
+    # 只能通过更换密钥使全部已签发 Token 立即失效。
+    secret: 请填写随机密钥

@@ -17,16 +17,111 @@
 | 数据库 | MySQL | 8.0+（推荐 8.4 LTS） |
 | ORM | MyBatis-Plus | 3.5.17 |
 | 认证 | Spring Security + jjwt | 7.x + 0.12.7 |
-| 文件解析 | Apache Tika | 官方稳定版 |
+| 文件解析 | Apache Tika | 3.3.2 |
 
 ## 目录结构
 
 ```text
 career-pilot-ai/
-├─ career-pilot-server/   后端（Spring Boot）
+├─ career-pilot-server/   后端（Spring Boot 4.1.1 + Java 21）
 ├─ career-pilot-web/      前端（Vue 3 + Vite）
+├─ Mysql/                 数据库初始化脚本
 └─ docs/                  设计与接口文档
 ```
+
+## 快速开始
+
+### 前置条件
+
+| 组件 | 要求 | 本项目验证环境 |
+|---|---|---|
+| JDK | 21 | 21.0.12 |
+| Maven | 3.9+ | 3.9.16 |
+| Node.js | 20+ | 24.21.0 |
+| MySQL | 8.0+ | 8.0.46 |
+
+### 1. 初始化数据库
+
+```bash
+mysql -u root -p < Mysql/career_pilot_init.sql
+```
+
+脚本创建 `career_pilot` 库（utf8mb4 / utf8mb4_0900_ai_ci）与 10 张表，内容由《数据库设计》的 DDL 生成，与设计文档保持同步。
+
+### 2. 配置后端
+
+复制配置模板并填入真实值：
+
+```bash
+cd career-pilot-server/src/main/resources
+cp application-local.yml.example application-local.yml
+```
+
+需填写三项：
+
+| 配置项 | 说明 |
+|---|---|
+| `spring.datasource.password` | MySQL 密码 |
+| `spring.ai.deepseek.api-key` | DeepSeek API Key —— **缺失会导致应用启动失败**，非仅调用时失败 |
+| `app.jwt.secret` | JWT 签名密钥，用 `openssl rand -base64 48` 生成 |
+
+`application-local.yml` 已被 `.gitignore` 忽略，不会进入版本库。
+
+### 3. 启动后端
+
+```bash
+cd career-pilot-server
+mvn clean package
+java -jar target/career-pilot-server-0.0.1-SNAPSHOT.jar
+```
+
+服务地址 `http://localhost:8080`。
+
+> **务必用 JDK 21 运行。** 若本机 `JAVA_HOME` 指向其他版本，注意 `java -jar` 走的是 PATH 解析而非 `JAVA_HOME`，此时应使用完整路径：`/path/to/jdk21/bin/java -jar target/career-pilot-server-0.0.1-SNAPSHOT.jar`。否则会报 `UnsupportedClassVersionError`。
+
+验证是否正常：
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test01","email":"test01@example.com","password":"Test1234"}'
+```
+
+返回 `{"code":0,...}` 即表示服务与数据库均正常。
+
+### 4. 启动前端
+
+```bash
+cd career-pilot-web
+npm install
+npm run dev
+```
+
+访问 `http://localhost:5173`。
+
+## 配置说明
+
+### 敏感配置与注入方式
+
+以下配置**不进入仓库**，通过 `application-local.yml`（推荐）或环境变量注入：
+
+| 配置项 | 对应环境变量 | 用途 |
+|---|---|---|
+| `spring.datasource.password` | `DB_PASSWORD` | MySQL 连接密码 |
+| `spring.ai.deepseek.api-key` | `DEEPSEEK_API_KEY` | 大模型调用凭据 |
+| `app.jwt.secret` | — | JWT 签名密钥（HS256，不少于 32 字节） |
+
+`application.yml` 中只保留非敏感默认值。
+
+### 可调参数
+
+| 项 | 默认值 | 配置项 |
+|---|---|---|
+| 后端端口 | 8080 | `server.port` |
+| 前端开发端口 | 5173 | `career-pilot-web/vite.config.js` |
+| 允许的跨域来源 | `http://localhost:5173` | `app.cors.allowed-origins` |
+| JWT 有效期 | 7200 秒 | `app.jwt.expiration-seconds` |
+| 模型名 | `deepseek-flash` | `spring.ai.deepseek.chat.options.model` |
 
 ## 文档
 
@@ -37,12 +132,5 @@ career-pilot-ai/
 | [API接口设计](docs/API接口设计.md) | REST 接口与统一响应结构 |
 | [Agent设计](docs/Agent设计.md) | 智能体、工具调用与 Prompt 约定 |
 | [设计审查报告](docs/设计审查报告.md) | 待验证项与设计问题清单 |
+| [验证记录](docs/验证记录.md) | 各功能实现后的实测过程与结果 |
 | [问题记录](docs/问题记录/) | 实施中实际遇到的问题，按类别归档 |
-
-## 开发环境
-
-- 前端：Vite 开发服务器 `http://localhost:5173`
-- 后端：Spring Boot `http://localhost:8080`
-- 数据库：本机 MySQL 8.x
-
-> 密钥类配置（数据库密码、JWT 密钥、DeepSeek API Key）通过环境变量或 `application-local.yml` 注入，不写入仓库。
