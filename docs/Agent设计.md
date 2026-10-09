@@ -1,12 +1,13 @@
 # 智能求职辅助平台：Agent 设计
 
-- 文档版本：V1.2
+- 文档版本：V1.3
 - 修订日期：2026-10-09
 - 核心技术：Spring AI 2.0.1 + DeepSeek Tool Calling
 - 目标：让模型在受控范围内选择业务工具，完成简历分析、岗位分析、匹配分析和面试题生成。
 - 修订说明：
   - V1.1：依据《设计审查报告》修订，修正模型接入方式与配置、明确思考模式策略、修正工具方法签名、补充工具调用记录方案
   - V1.2：第二轮审查整改，验证项编号与系统架构设计文档统一（I-1）、明确 `source_hash` 计算基准（G-2）
+  - V1.3：修正 7.1 节配置示例的废弃属性路径（`chat.options.thinking` → `chat.thinking`）；回写 V1–V5 实测结论
 
 ## 0. 事实核实说明
 
@@ -329,10 +330,13 @@ spring:
       api-key: ${DEEPSEEK_API_KEY}
       base-url: https://api.deepseek.com
       chat:
+        # 注意属性路径：thinking 位于 chat 下，不在 chat.options 内。
+        # chat.options.thinking 在 Spring AI 2.0.1 中已废弃 —— 配置元数据中
+        # 其 deprecation.replacement 明确指向 chat.thinking。
+        thinking:
+          type: disabled
         options:
           model: deepseek-flash
-          thinking:
-            type: disabled
           temperature: 0.3
 ```
 
@@ -367,7 +371,7 @@ spring:
 2. 思考模式下 temperature 失效，不利于结构化输出的稳定性控制；
 3. 思维链计入输出 token 并计费，关闭可显著降低成本。
 
-**【待验证】** 关闭思考模式后的实际效果需通过 PoC 确认，见第 10 节。
+**【已核实】（2026-10-09 实测）** 关闭思考模式后的实际效果已通过 PoC 确认：请求报文携带 `thinking=Thinking[type=DISABLED]` 并被服务端正常接受；`temperature` 恢复正常生效（设为 0.0 时三次输出逐字相同，设为 1.5 时三次各不相同）；Tool Calling 单轮闭环与多轮调用均正常。详见第 10 节 V1、V2、V3、V5。
 
 ### 7.3 模型名说明
 
@@ -443,12 +447,12 @@ spring:
 
 初始化阶段必须验证的技术项（编号与系统架构设计文档第 11 节统一，该节为权威清单；V6、V7 为依赖集成验证，见该节）：
 
-| 编号 | 待验证项 | 验证方式 | 失败的退路 |
-|---|---|---|---|
-| V1 | 非思考模式下的 Tool Calling 完整闭环 | 一个 `@Tool` 方法，观察模型能否调用并基于结果作答 | 检查配置是否生效；必要时改用 OpenAI 兼容通道 + `extraBody` |
-| V2 | `thinking.type=disabled` 是否被 DeepSeek 服务端接受 | 观察请求报文与响应中是否仍返回 `reasoning_content` | 改为在请求层显式传参 |
-| V3 | 关闭思考模式后 `temperature` 是否生效 | 相同输入多次调用比较输出波动 | 若不生效，改用更严格的 Prompt 与输出校验 |
-| V4 | 模型名实际可用性 | 分别以 `deepseek-flash` 与 Spring AI 文档所列名称调用 | 选用实测可用的名称，并回写文档 |
-| V5 | Tool Calling 多轮（连续两次工具调用）是否稳定 | 要求模型连续调用两个工具 | 若不稳定，限制为单工具任务并调整 Prompt |
+| 编号 | 待验证项 | 验证方式 | 失败的退路 | 实测结论（2026-10-09） |
+|---|---|---|---|---|
+| V1 | 非思考模式下的 Tool Calling 完整闭环 | 一个 `@Tool` 方法，观察模型能否调用并基于结果作答 | 检查配置是否生效；必要时改用 OpenAI 兼容通道 + `extraBody` | **通过**：闭环走通，模型完全基于工具返回值作答，无编造 |
+| V2 | `thinking.type=disabled` 是否被 DeepSeek 服务端接受 | 观察请求报文与响应中是否仍返回 `reasoning_content` | 改为在请求层显式传参 | **通过**：请求报文含 `Thinking[type=DISABLED]`，服务端接受 |
+| V3 | 关闭思考模式后 `temperature` 是否生效 | 相同输入多次调用比较输出波动 | 若不生效，改用更严格的 Prompt 与输出校验 | **通过**：t=0.0 三次输出逐字相同，t=1.5 三次各不相同 |
+| V4 | 模型名实际可用性 | 分别以 `deepseek-flash` 与 Spring AI 文档所列名称调用 | 选用实测可用的名称，并回写文档 | **通过**：`deepseek-flash` 调用成功，生产配置采用该名称 |
+| V5 | Tool Calling 多轮（连续两次工具调用）是否稳定 | 要求模型连续调用两个工具 | 若不稳定，限制为单工具任务并调整 Prompt | **通过**：单次请求内连续调用 2 个工具并正确整合 |
 
-验证结论应回写本文档与《设计审查报告》。
+**验证结论（2026-10-09）**：上表 V1–V5 已全部完成并通过，结论已回写本文档与《设计审查报告》；V6、V7 见《系统架构设计》第 11 节。**初始化阶段的技术验证至此全部结束**，可按本节第 10 条的实施顺序展开业务代码。

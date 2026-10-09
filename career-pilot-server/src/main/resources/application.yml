@@ -21,10 +21,18 @@ spring:
     deepseek:
       base-url: https://api.deepseek.com
       chat:
+        # 统一关闭思考模式（《Agent设计》7.2 的关键决策）：
+        # 思考模式与 Tool Calling 组合存在强制协议约束，且会使 temperature 失效。
+        # 属性路径注意：chat.thinking 是当前写法；chat.options.thinking 已废弃
+        # （见配置元数据，其 deprecation.replacement 指向 chat.thinking）。
+        thinking:
+          type: disabled
         options:
           # 模型名必须显式配置，禁止依赖 Spring AI 默认值
           # （Spring AI 旧版默认值为已退役的 deepseek-chat，见《设计审查报告》P0-3）
           model: deepseek-flash
+          # 结构化输出场景宜取低值（《Agent设计》7.1）
+          temperature: 0.3
 
 # 敏感配置约定（《系统架构设计》7、9 节）：
 # 数据库密码、JWT 密钥、DeepSeek API Key 一律通过环境变量或 application-local.yml
