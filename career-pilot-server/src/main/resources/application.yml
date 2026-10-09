@@ -17,6 +17,15 @@ spring:
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:}
 
+  ai:
+    deepseek:
+      base-url: https://api.deepseek.com
+      chat:
+        options:
+          # 模型名必须显式配置，禁止依赖 Spring AI 默认值
+          # （Spring AI 旧版默认值为已退役的 deepseek-chat，见《设计审查报告》P0-3）
+          model: deepseek-flash
+
 # 敏感配置约定（《系统架构设计》7、9 节）：
 # 数据库密码、JWT 密钥、DeepSeek API Key 一律通过环境变量或 application-local.yml
 # 注入，本文件不含任何真实凭据。
