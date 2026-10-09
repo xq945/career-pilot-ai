@@ -5,5 +5,18 @@ spring:
   application:
     name: career-pilot-server
 
-# 数据库、JWT 密钥、DeepSeek API Key 等敏感配置一律走环境变量或未提交的
-# application-local.yml（见 .gitignore），不写入本文件。
+  # 本地开发配置（数据库密码、API Key 等）存放于 application-local.yml，
+  # 该文件已被 .gitignore 忽略，不进入仓库。
+  # 部署时以外部参数覆盖，例如 --spring.profiles.active=prod
+  profiles:
+    active: local
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: "jdbc:mysql://localhost:3306/career_pilot?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false"
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+
+# 敏感配置约定（《系统架构设计》7、9 节）：
+# 数据库密码、JWT 密钥、DeepSeek API Key 一律通过环境变量或 application-local.yml
+# 注入，本文件不含任何真实凭据。
