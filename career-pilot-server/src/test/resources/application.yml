@@ -10,3 +10,9 @@ spring:
       # 占位值：仅为让 DeepSeekChatAutoConfiguration 完成装配，
       # 测试不发起真实模型调用，因此无需真实密钥，也不应写入真实密钥。
       api-key: test-placeholder-key
+
+app:
+  jwt:
+    # 测试专用密钥，长度满足 HS256 的 32 字节要求。
+    # 仅供单元测试使用，与真实环境无关。
+    secret: test-only-secret-key-do-not-use-in-production-0123456789

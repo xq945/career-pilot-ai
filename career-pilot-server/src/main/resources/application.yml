@@ -37,3 +37,13 @@ spring:
 # 敏感配置约定（《系统架构设计》7、9 节）：
 # 数据库密码、JWT 密钥、DeepSeek API Key 一律通过环境变量或 application-local.yml
 # 注入，本文件不含任何真实凭据。
+
+app:
+  jwt:
+    # Token 有效期，单位秒，缺省 2 小时（《API接口设计》2 节）
+    # 签名密钥 app.jwt.secret 存放在 application-local.yml
+    expiration-seconds: 7200
+  cors:
+    # 开发环境前端来源（《系统架构设计》7.2）；
+    # 生产环境与 API 同源部署，届时不应再开放跨域
+    allowed-origins: http://localhost:5173
