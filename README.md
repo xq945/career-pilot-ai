@@ -37,6 +37,7 @@ career-pilot-ai/
 | [API接口设计](docs/API接口设计.md) | REST 接口与统一响应结构 |
 | [Agent设计](docs/Agent设计.md) | 智能体、工具调用与 Prompt 约定 |
 | [设计审查报告](docs/设计审查报告.md) | 待验证项与设计问题清单 |
+| [问题记录](docs/问题记录/) | 实施中实际遇到的问题，按类别归档 |
 
 ## 开发环境
 

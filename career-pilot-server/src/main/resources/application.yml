@@ -1,0 +1,9 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: career-pilot-server
+
+# 数据库、JWT 密钥、DeepSeek API Key 等敏感配置一律走环境变量或未提交的
+# application-local.yml（见 .gitignore），不写入本文件。

@@ -1,0 +1,12 @@
+# 测试专用配置：用内存库满足 DataSource 自动装配，避免测试依赖本机 MySQL
+spring:
+  datasource:
+    url: jdbc:h2:mem:careerpilot;DB_CLOSE_DELAY=-1;MODE=MySQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  ai:
+    deepseek:
+      # 占位值：仅为让 DeepSeekChatAutoConfiguration 完成装配，
+      # 测试不发起真实模型调用，因此无需真实密钥，也不应写入真实密钥。
+      api-key: test-placeholder-key
