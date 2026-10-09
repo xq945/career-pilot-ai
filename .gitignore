@@ -1,0 +1,49 @@
+# ========== 环境变量与本地密钥（系统架构设计 §9）==========
+# 数据库密码、JWT 密钥、DeepSeek API Key 一律走环境变量或本地未提交配置
+application-local.yml
+application-*.local.yml
+*.env
+.env
+.env.*
+
+# ========== 文件上传目录（系统架构设计 §7.1）==========
+# 存储根目录本应位于项目运行目录之外，此处兜底防止误提交
+uploads/
+storage/
+
+# ========== Java / Maven ==========
+target/
+build/
+*.class
+*.jar
+*.war
+*.ear
+!.mvn/wrapper/maven-wrapper.jar
+
+# ========== 前端 Node / Vite ==========
+node_modules/
+dist/
+dist-ssr/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+
+# ========== IDE ==========
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+*.swp
+*.swo
+
+# ========== 操作系统 ==========
+.DS_Store
+Thumbs.db
+desktop.ini
