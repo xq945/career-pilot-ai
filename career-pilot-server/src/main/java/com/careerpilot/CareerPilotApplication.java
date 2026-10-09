@@ -1,4 +1,4 @@
-package com.xq945.careerpilot;
+package com.careerpilot;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

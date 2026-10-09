@@ -1,4 +1,4 @@
-package com.xq945.careerpilot.entity;
+package com.careerpilot.entity;
 
 import java.time.LocalDateTime;
 import java.util.List;

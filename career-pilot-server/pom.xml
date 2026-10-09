@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.xq945</groupId>
+    <groupId>com.careerpilot</groupId>
     <artifactId>career-pilot-server</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>career-pilot-server</name>
