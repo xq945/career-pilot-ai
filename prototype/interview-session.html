@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>模拟面试答题 · 智能求职辅助平台</title>
+<!--
+  页面：模拟面试答题
+  路由：/interviews/:id
+  接口：GET  /api/interviews/{id}                              会话详情（含全部题目、已提交的回答与评价）
+        POST /api/interviews/{id}/questions/{qid}/answer       提交回答并返回评价
+        GET  /api/interviews/{id}/report                       报告（顶部入口）
+  交互要点：
+    1. 提交按钮点击后进入「评价中」态（模型调用，约 10–30 秒），期间不可重复提交。
+    2. 同一题重复提交会覆盖上一次回答与评价，界面上按钮文案为「更新回答」并给出说明。
+    3. 全部题目作答完成后，服务端计算总分并将会话置为已完成 —— 前端据 answeredCount 判断。
+    4. 第一版无「取消面试」接口，故本页不出现取消入口。
+  状态：本页用演示切换器展示「已作答（含评价）/ 未作答」两种题目形态。
+-->
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body data-page="interview" data-crumb="AI 分析与练习 / <a href='interview.html'>AI 面试</a> / <b>答题</b>">
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+
+    <div class="content">
+      <div class="content__inner">
+
+        <!-- ===== 会话头 ===== -->
+        <div class="row mb-20" style="align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            <h1>Java 后端岗位模拟面试</h1>
+            <p class="page-head__desc">关联岗位：Java 后端开发实习生（示例科技） · 综合题型</p>
+          </div>
+          <div class="btn-group">
+            <a class="btn" href="interview-report.html">查看报告</a>
+            <a class="btn btn--ghost" href="interview.html">退出</a>
+          </div>
+        </div>
+
+        <!-- 进度条 -->
+        <div class="card mb-20">
+          <div class="card__body card__body--tight">
+            <div class="row mb-8">
+              <span class="strong">完成进度</span>
+              <span class="spacer"></span>
+              <span class="small muted">已答 3 / 5 题 · 全部作答后生成总分</span>
+            </div>
+            <div class="bar"><div class="bar__fill" style="width:60%"></div></div>
+          </div>
+        </div>
+
+        <!-- ===== 原型演示：题目状态切换（实现时删除） ===== -->
+        <div class="note">
+          <b>原型演示控件</b> —— 切换查看「未作答」形态。实现阶段由该题是否已有 <code>answer</code> 决定渲染哪种状态。
+        </div>
+        <div class="btn-group mb-16">
+          <button class="btn btn--sm is-active" data-switch="st" data-switch-target="answered">已作答（含评价）</button>
+          <button class="btn btn--sm" data-switch="st" data-switch-target="pending">未作答</button>
+          <button class="btn btn--sm" data-switch="st" data-switch-target="grading">评价中</button>
+        </div>
+
+        <div class="grid grid--sidebar">
+
+          <!-- ================= 左：答题区 ================= -->
+          <div>
+
+            <!-- ---------- 状态一：已作答并已评价 ---------- -->
+            <div data-switch-panel="st" data-switch-target="answered">
+              <div class="card">
+                <div class="card__head">
+                  <span class="tag tag--brand">第 3 题</span>
+                  <span class="tag">Spring 框架</span>
+                  <span class="spacer"></span>
+                  <span class="small muted">考察点：依赖注入</span>
+                </div>
+                <div class="card__body">
+                  <h2 style="font-size:16px;line-height:1.7">
+                    请解释 Spring 的依赖注入是如何实现的，并说明构造器注入与字段注入的区别。
+                  </h2>
+                </div>
+              </div>
+
+              <!-- 我的回答（可编辑） -->
+              <div class="card">
+                <div class="card__head">
+                  <h2>我的回答</h2>
+                  <span class="spacer"></span>
+                  <span class="small muted">上次提交于 15:18</span>
+                </div>
+                <div class="card__body">
+                  <textarea class="textarea" style="min-height:130px">Spring 的依赖注入是通过 IoC 容器实现的。容器在启动时扫描 Bean 定义，解析它们之间的依赖关系，然后通过反射把依赖对象注入进去。构造器注入是在创建 Bean 实例时通过构造函数把依赖传进去，字段注入是创建完对象后通过反射直接给字段赋值。构造器注入的好处是依赖不可变、便于测试，也能避免循环依赖问题。</textarea>
+                  <div class="counter">148 / 5000</div>
+                  <div class="alert mt-12">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+                    <div>重新提交会<strong>覆盖</strong>上一次的回答与评价，新的评分以最后一次提交为准。</div>
+                  </div>
+                </div>
+                <div class="card__foot">
+                  <span class="spacer"></span>
+                  <button class="btn" data-modal-open="md-regrade">更新回答</button>
+                </div>
+              </div>
+
+              <!-- 评价结果 -->
+              <div class="card">
+                <div class="card__head">
+                  <h2>AI 评价</h2>
+                  <span class="tag tag--ok">已评价</span>
+                </div>
+                <div class="card__body">
+
+                  <!-- 分数条 -->
+                  <div class="row mb-16" style="gap:16px;align-items:center">
+                    <div style="width:72px;height:72px;flex:0 0 72px;border-radius:16px;background:var(--brand-50);
+                                display:flex;flex-direction:column;align-items:center;justify-content:center">
+                      <div style="font-size:26px;font-weight:600;color:var(--brand-700);line-height:1">78</div>
+                      <div class="small muted" style="font-size:11px">本题得分</div>
+                    </div>
+                    <div style="flex:1">
+                      <div class="bar mb-8"><div class="bar__fill" style="width:78%"></div></div>
+                      <p class="small muted">回答覆盖了核心概念，但对事务隔离级别的解释不够完整。</p>
+                    </div>
+                  </div>
+
+                  <div class="divider"></div>
+
+                  <!-- 点评 -->
+                  <h3 class="mb-8">点评</h3>
+                  <p class="small mb-16" style="line-height:1.8">
+                    回答说清了 IoC 容器与注入时机的基本原理，也点出了构造器注入在「不可变」与「可测试性」上的优势，
+                    思路是对的。不足之处在于没有展开 Spring 解决循环依赖的具体机制（三级缓存），
+                    而这一点几乎是该题的必问追问。另外可以补充说明 Spring 为什么推荐构造器注入（官方文档的立场）。
+                  </p>
+
+                  <!-- 参考答案 -->
+                  <h3 class="mb-8">参考答案</h3>
+                  <div style="background:#f8fafc;border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px">
+                    <p class="small" style="line-height:1.85">
+                      Spring 通过 IoC 容器管理 Bean 的生命周期与依赖关系。容器读取 BeanDefinition，
+                      在实例化阶段解析依赖，并通过三种方式完成注入：构造器注入（实例化时传入）、
+                      Setter 注入（实例化后调用 setter）、字段注入（反射直接赋值）。
+                      官方推荐构造器注入，因为依赖在对象创建时即确定，字段可声明为 final，便于单元测试，
+                      也能在启动阶段暴露循环依赖。字段注入实现简洁但隐藏依赖关系、不利于测试。
+                      对于循环依赖，Spring 通过三级缓存（singletonObjects、earlySingletonObjects、
+                      singletonFactories）在特定条件下提前暴露半成品对象来解决，但构造器注入的循环依赖无法解决。
+                    </p>
+                  </div>
+
+                  <!-- 改进建议 -->
+                  <h3 class="mb-8 mt-16">改进建议</h3>
+                  <ul class="bullets bullets--warn">
+                    <li>补充 Spring 三级缓存解决循环依赖的机制，这是常见追问点</li>
+                    <li>说明「为什么官方推荐构造器注入」，体现对设计取舍的理解</li>
+                    <li>可以举一个自己项目中的实际用法作为佐证</li>
+                  </ul>
+
+                </div>
+                <div class="card__foot">
+                  <span class="small muted">评价由 AI 生成，仅供参考，不代表真实面试结果</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- ---------- 状态二：未作答 ---------- -->
+            <div data-switch-panel="st" data-switch-target="pending" class="is-hidden">
+              <div class="card">
+                <div class="card__head">
+                  <span class="tag tag--brand">第 3 题</span>
+                  <span class="tag">Spring 框架</span>
+                  <span class="spacer"></span>
+                  <span class="small muted">考察点：依赖注入</span>
+                </div>
+                <div class="card__body">
+                  <h2 style="font-size:16px;line-height:1.7">
+                    请解释 Spring 的依赖注入是如何实现的，并说明构造器注入与字段注入的区别。
+                  </h2>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card__head"><h2>我的回答</h2></div>
+                <div class="card__body">
+                  <textarea class="textarea" style="min-height:180px" placeholder="写下你的回答……&#10;&#10;建议先给结论，再展开原理，必要时举一个自己项目中的例子。"></textarea>
+                  <div class="counter">0 / 5000</div>
+                  <p class="small muted mt-8">提交后 AI 会给出评分、点评与参考答案。可以多次修改，以最后一次提交为准。</p>
+                </div>
+                <div class="card__foot">
+                  <span class="spacer"></span>
+                  <button class="btn btn--primary">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-3-6z"/><path d="M11 14l9-10"/></svg>
+                    提交回答
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- ---------- 状态三：评价中 ---------- -->
+            <div data-switch-panel="st" data-switch-target="grading" class="is-hidden">
+              <div class="card">
+                <div class="card__head">
+                  <span class="tag tag--brand">第 3 题</span>
+                  <span class="tag">Spring 框架</span>
+                </div>
+                <div class="card__body">
+                  <h2 style="font-size:16px;line-height:1.7">
+                    请解释 Spring 的依赖注入是如何实现的，并说明构造器注入与字段注入的区别。
+                  </h2>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card__head">
+                  <h2>AI 评价</h2>
+                  <span class="tag tag--info"><span class="spinner" style="width:11px;height:11px;border-width:1.5px"></span>评价中</span>
+                </div>
+                <div class="card__body">
+                  <div class="row mb-16"><span class="spinner"></span><span class="strong">正在批改你的回答…</span></div>
+                  <p class="small muted mb-16">通常需要 10–30 秒。评价完成后会自动出现在这里，无需刷新页面。</p>
+                  <div class="skeleton mb-8" style="width:88%"></div>
+                  <div class="skeleton mb-8" style="width:74%"></div>
+                  <div class="skeleton" style="width:60%"></div>
+                </div>
+                <div class="card__foot">
+                  <span class="small muted">评价失败时（50200）会保留你的回答，可直接重试</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 上一题 / 下一题 -->
+            <div class="row mt-16">
+              <button class="btn">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>
+                上一题
+              </button>
+              <span class="spacer"></span>
+              <button class="btn">下一题
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+              </button>
+            </div>
+
+          </div>
+
+          <!-- ================= 右：题目导航 ================= -->
+          <div>
+            <div class="card">
+              <div class="card__head">
+                <h2>题目列表</h2>
+              </div>
+              <div class="card__body card__body--tight">
+                <div class="q-nav">
+                  <div class="q-nav__item is-done">
+                    <span class="q-nav__no">✓</span>
+                    <span class="q-nav__text">请解释 Java 中 HashMap 的扩容机制</span>
+                    <span class="small muted">82</span>
+                  </div>
+                  <div class="q-nav__item is-done">
+                    <span class="q-nav__no">✓</span>
+                    <span class="q-nav__text">MySQL 索引失效的常见场景有哪些</span>
+                    <span class="small muted">75</span>
+                  </div>
+                  <div class="q-nav__item is-active">
+                    <span class="q-nav__no">3</span>
+                    <span class="q-nav__text">Spring 依赖注入的实现原理</span>
+                  </div>
+                  <div class="q-nav__item">
+                    <span class="q-nav__no">4</span>
+                    <span class="q-nav__text">介绍一个你参与度最高的项目</span>
+                  </div>
+                  <div class="q-nav__item">
+                    <span class="q-nav__no">5</span>
+                    <span class="q-nav__text">线上接口变慢时你会如何排查</span>
+                  </div>
+                </div>
+              </div>
+              <div class="card__foot">
+                <span class="small muted">已答 3 题 · 平均 78.5 分</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card__head"><h2>答题提示</h2></div>
+              <div class="card__body">
+                <ul class="bullets">
+                  <li>先给结论，再展开原理，最后举一个自己的例子</li>
+                  <li>不清楚的地方可以说明思路，比空着更好</li>
+                  <li>每题都可以修改后重新提交</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 更新回答确认 ===== -->
+<div class="overlay" id="md-regrade" style="display:none">
+  <div class="modal">
+    <div class="modal__head">
+      <h2>更新这次回答？</h2>
+      <button class="modal__close" data-modal-close>×</button>
+    </div>
+    <div class="modal__body">
+      <ul class="bullets">
+        <li>新回答会<strong>覆盖</strong>本题原有的回答与评价。</li>
+        <li>本题得分会以新一次评价为准（当前 78 分）。</li>
+        <li>已完成的会话总分会在下次打开报告时重新计算。</li>
+      </ul>
+      <div class="alert mt-12">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        <div>重新评价会再调用一次大模型，通常需要 10–30 秒。</div>
+      </div>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-modal-close>取消</button>
+      <button class="btn btn--primary">确认更新</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/prototype.js"></script>
+</body>
+</html>

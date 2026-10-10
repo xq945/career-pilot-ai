@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>简历管理 · 智能求职辅助平台</title>
+<!--
+  页面：简历管理
+  路由：/resumes
+  接口：POST   /api/resumes                 上传（multipart/form-data，字段 file、name）
+        GET    /api/resumes?page&size       列表（仅返回有效简历）
+        DELETE /api/resumes/{id}            删除（逻辑删除 + 物理删除文件，幂等）
+        POST   /api/resumes/{id}/analyze    发起分析（本页「分析」按钮，成功后跳转分析页）
+        GET    /api/resumes/{id}/analysis   读取分析状态与结果
+  边界：41300 文件过大、41500 类型不支持、400 文本提取失败（扫描件）——均以页内提示呈现，不上抛全局。
+        列表接口每条记录含 analyzed 字段（API V1.3），「已分析 / 未分析」标签直接读它，
+        无需逐条追加分析接口请求。
+        简历原文不提供预览与下载，故本页与详情页均无「查看原文」入口。
+-->
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body data-page="resumes" data-crumb="求职材料 / <b>简历管理</b>">
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+
+    <div class="content">
+      <div class="content__inner">
+
+        <div class="page-head">
+          <div class="page-head__text">
+            <h1>简历管理</h1>
+            <p class="page-head__desc">上传 PDF / DOCX 简历，系统提取文本后用于 AI 分析与岗位匹配</p>
+          </div>
+          <div class="page-head__actions">
+            <button class="btn btn--primary" data-modal-open="md-upload">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              上传简历
+            </button>
+          </div>
+        </div>
+
+        <!-- 上传结果提示（成功 / 失败态，二选一展示） -->
+        <div class="alert alert--ok mb-16">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          <div>「Java后端简历」上传成功，文本已提取，可以发起 AI 分析了。</div>
+        </div>
+
+        <!-- 失败态示例（415 文件类型不支持 / 413 文件过大 / 400 文本提取失败）：
+        <div class="alert alert--danger mb-16">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>
+          <div><span class="alert__title">文件类型不支持。</span>仅支持 PDF 与 DOCX，请重新选择。</div>
+        </div>
+        -->
+
+        <!-- ===== 简历列表 ===== -->
+        <div class="card">
+          <div class="card__head">
+            <h2>我的简历</h2>
+            <span class="card__sub">共 3 份</span>
+          </div>
+
+          <div class="item-list">
+            <div class="item">
+              <div class="item__icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+              </div>
+              <div class="item__main">
+                <div class="item__title">
+                  Java后端简历
+                  <span class="tag tag--ok">已分析</span>
+                </div>
+                <div class="item__meta">PDF · 上传于 2026-10-09 14:20 · 分析版本 v2</div>
+              </div>
+              <div class="item__actions">
+                <a class="btn btn--sm" href="resume-analysis.html">查看分析</a>
+                <button class="btn btn--sm" data-modal-open="md-reanalyze">重新分析</button>
+                <button class="btn btn--sm btn--danger" data-modal-open="md-delete">删除</button>
+              </div>
+            </div>
+
+            <div class="item">
+              <div class="item__icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+              </div>
+              <div class="item__main">
+                <div class="item__title">
+                  通用版简历
+                  <span class="tag">未分析</span>
+                </div>
+                <div class="item__meta">DOCX · 上传于 2026-10-08 19:32</div>
+              </div>
+              <div class="item__actions">
+                <button class="btn btn--sm btn--primary" data-modal-open="md-analyzing">发起分析</button>
+                <button class="btn btn--sm btn--danger" data-modal-open="md-delete">删除</button>
+              </div>
+            </div>
+
+            <div class="item">
+              <div class="item__icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+              </div>
+              <div class="item__main">
+                <div class="item__title">
+                  实习简历（旧）
+                  <span class="tag tag--info"><span class="spinner" style="width:11px;height:11px;border-width:1.5px"></span>分析中</span>
+                </div>
+                <div class="item__meta">PDF · 上传于 2026-10-07 10:15 · 预计还需 20 秒</div>
+              </div>
+              <div class="item__actions">
+                <button class="btn btn--sm" disabled>分析中…</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 空态（无任何简历时替换上方 item-list） -->
+          <!--
+          <div class="empty">
+            <div class="empty__icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+            </div>
+            <h3>还没有简历</h3>
+            <p>上传一份 PDF 或 DOCX 简历，系统会自动提取文本，用于 AI 分析与岗位匹配。</p>
+            <button class="btn btn--primary" data-modal-open="md-upload">上传简历</button>
+          </div>
+          -->
+
+          <div class="card__foot">
+            <div class="pagination">
+              <span class="pagination__info">共 3 条</span>
+              <button class="pagination__btn" disabled>‹</button>
+              <button class="pagination__btn is-active">1</button>
+              <button class="pagination__btn" disabled>›</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 上传弹窗 ===== -->
+<div class="overlay" id="md-upload" style="display:none">
+  <div class="modal">
+    <div class="modal__head">
+      <h2>上传简历</h2>
+      <button class="modal__close" data-modal-close>×</button>
+    </div>
+    <div class="modal__body">
+      <div class="dropzone">
+        <div class="dropzone__icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M8 8l4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        </div>
+        <p><strong>点击选择文件</strong>，或拖拽文件到此处</p>
+        <p class="dropzone__meta">支持 PDF、DOCX，单个文件不超过 10 MB</p>
+      </div>
+      <div class="field mt-16">
+        <label class="field__label">简历名称</label>
+        <input class="input" type="text" placeholder="留空则使用原文件名">
+      </div>
+      <div class="alert">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        <div>请上传<strong>可复制文本</strong>的 PDF。扫描件无法提取文字，系统会拒绝入库。</div>
+      </div>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-modal-close>取消</button>
+      <button class="btn btn--primary">开始上传</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 分析中弹窗（发起分析后的等待态） ===== -->
+<div class="overlay" id="md-analyzing" style="display:none">
+  <div class="modal">
+    <div class="modal__head"><h2>正在分析简历</h2></div>
+    <div class="modal__body">
+      <div class="row mb-12">
+        <span class="spinner"></span>
+        <span class="strong">AI 正在阅读你的简历…</span>
+      </div>
+      <p class="small muted">通常需要 10–30 秒。分析内容包括技能梳理、经历提取、优势与改进建议。</p>
+      <div class="divider"></div>
+      <div class="skeleton mb-8" style="width:88%"></div>
+      <div class="skeleton mb-8" style="width:72%"></div>
+      <div class="skeleton" style="width:60%"></div>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-modal-close>转到后台</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 重新分析确认（内容未变时复用已有结果的提示） ===== -->
+<div class="overlay" id="md-reanalyze" style="display:none">
+  <div class="modal">
+    <div class="modal__head">
+      <h2>重新分析这份简历？</h2>
+      <button class="modal__close" data-modal-close>×</button>
+    </div>
+    <div class="modal__body">
+      <div class="alert">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        <div>如果简历内容没有变化，系统会直接返回已有结果，<strong>不会重复调用模型</strong>，也不产生额外消耗。</div>
+      </div>
+      <p class="small muted mt-12">当前分析版本为 v2。若需要新的分析版本，请先重新上传修改后的简历。</p>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-modal-close>取消</button>
+      <button class="btn btn--primary">确定分析</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 删除确认 ===== -->
+<div class="overlay" id="md-delete" style="display:none">
+  <div class="modal">
+    <div class="modal__head">
+      <h2>删除这份简历？</h2>
+      <button class="modal__close" data-modal-close>×</button>
+    </div>
+    <div class="modal__body">
+      <p class="mb-12">即将删除「<span class="strong">Java后端简历</span>」。</p>
+      <ul class="bullets bullets--danger">
+        <li>简历文件会从服务器<strong>同步删除</strong>，此操作不可撤销。</li>
+        <li>由该简历产生的<strong>分析、匹配和面试记录会保留</strong>，便于追溯历史结论。</li>
+        <li>这些记录中原先指向该简历的入口将提示「关联简历已删除」。</li>
+      </ul>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-modal-close>取消</button>
+      <button class="btn btn--danger">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/prototype.js"></script>
+</body>
+</html>

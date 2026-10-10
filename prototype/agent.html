@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>求职智能体 · 智能求职辅助平台</title>
+<!--
+  页面：求职智能体对话
+  路由：/agent
+  接口：POST /api/agent/chat                    发送消息（非流式，一次性返回）
+        GET  /api/agent/sessions?page&size       会话列表（按 updated_at 倒序）
+        GET  /api/agent/sessions/{sessionId}     会话消息
+  响应字段 → 界面映射：
+    data.sessionId  → 首次对话由服务端生成并返回，后续请求携带以延续上下文
+    data.message    → AI 回复气泡
+    data.toolCalls  → 回复下方的「工具调用」折叠条（toolName + status）
+  交互要点：
+    1. 第一版为「非流式」——发送后整体等待，需要明确的等待态，不做逐字输出。
+    2. resumeId / jobId 均为可选上下文：用户可先在下方选中某份简历或某个岗位再提问；
+       不选时 Agent 只能凭对话历史作答，需要具体资源时会反过来询问用户。
+    3. 上下文选择器中的资源必须属于当前用户，否则后端返回 403/404 —— 前端只列出自己的资源即可规避。
+    4. 单次请求受「工具调用不超过 5 次、总时长不超过 120 秒」约束，超出时返回部分结果并说明。
+  状态：本页同时展示「已有对话」与「空态引导」两种形态（下方用切换器演示）。
+-->
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/prototype.css">
+<style>
+  .agent-layout { display: flex; height: calc(100vh - var(--topbar-h)); }
+  .agent-side {
+    width: 252px; flex: 0 0 252px;
+    border-right: 1px solid var(--line);
+    background: #fff;
+    display: flex; flex-direction: column;
+  }
+  .agent-side__head { padding: 14px; border-bottom: 1px solid var(--line); }
+  .agent-side__list { flex: 1; overflow-y: auto; }
+  .agent-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+</style>
+</head>
+<body data-page="agent" data-crumb="总览 / <b>求职智能体</b>">
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+
+    <div class="agent-layout">
+
+      <!-- ===== 左：会话列表 ===== -->
+      <div class="agent-side">
+        <div class="agent-side__head">
+          <button class="btn btn--primary btn--block">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            新建对话
+          </button>
+        </div>
+        <div class="agent-side__list">
+          <div class="session is-active">
+            <div class="session__title">帮我看看简历适不适合这个岗位</div>
+            <div class="session__time">今天 15:20 · 4 条消息</div>
+          </div>
+          <div class="session">
+            <div class="session__title">Docker 部署经验怎么补</div>
+            <div class="session__time">今天 11:05 · 6 条消息</div>
+          </div>
+          <div class="session">
+            <div class="session__title">简历里 Redis 要不要删掉</div>
+            <div class="session__time">昨天 21:40 · 4 条消息</div>
+          </div>
+          <div class="session">
+            <div class="session__title">帮我准备明天的面试</div>
+            <div class="session__time">10-07 19:12 · 8 条消息</div>
+          </div>
+        </div>
+        <div class="sidebar__foot" style="border-top:1px solid var(--line)">
+          会话按最近活跃时间排序
+        </div>
+      </div>
+
+      <!-- ===== 右：对话区 ===== -->
+      <div class="agent-main">
+
+        <!-- 原型演示切换 -->
+        <div style="padding:10px 24px;border-bottom:1px solid var(--line);background:#fff">
+          <div class="row">
+            <span class="small muted">原型演示：</span>
+            <button class="btn btn--sm is-active" data-switch="ag" data-switch-target="chat">对话中</button>
+            <button class="btn btn--sm" data-switch="ag" data-switch-target="empty">空态</button>
+          </div>
+        </div>
+
+        <!-- ---------- 对话中 ---------- -->
+        <div data-switch-panel="ag" data-switch-target="chat" class="agent-pane">
+          <div class="chat__scroll">
+            <div class="chat__inner">
+
+              <!-- 用户消息 -->
+              <div class="msg msg--user">
+                <div class="msg__avatar">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+                </div>
+                <div class="msg__body">
+                  <div class="msg__name">我</div>
+                  <div class="msg__bubble">帮我看看我的简历适不适合 Java 后端开发实习生这个岗位</div>
+                </div>
+              </div>
+
+              <!-- AI 回复 + 工具调用 -->
+              <div class="msg msg--ai">
+                <div class="msg__avatar">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>
+                </div>
+                <div class="msg__body">
+                  <div class="msg__name">求职助手</div>
+                  <div class="msg__bubble">
+                    <p><strong>结论：</strong>你和这个岗位的整体匹配度是 <strong>82.4 分</strong>（匹配良好），技术主线对得上，主要缺口在「部署与容器化」相关的实践证据。</p>
+                    <p><strong>证据：</strong>岗位要求的 Java、Spring Boot、MyBatis、MySQL 在你的项目经历里都有对应描述，其中 Spring Boot 和 MySQL 有明确的场景说明。学历要求（本科及以上）也满足。</p>
+                    <p><strong>差距：</strong>岗位的加分项提到 Docker 与服务器部署经验，你的简历里没有找到相关证据；另外 Redis 只出现在技能列表中，没有使用场景，面试时容易被追问。</p>
+                    <p><strong>建议：</strong>第一步，挑一个现有项目在一台云服务器上完整部署一遍（构建镜像 → 启动容器 → 配置反向代理），把过程写进项目经历；第二步，为 Redis 补一个真实的缓存场景，或者从技能列表里移除。这两项做完后再匹配一次，分数会有明显提升。</p>
+
+                    <!-- 工具调用记录：折叠展示，只显示工具名与状态 -->
+                    <div class="tool-trace">
+                      <div class="tool-trace__head">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                        本次调用了 3 个工具（点击展开）
+                      </div>
+                      <div class="tool-trace__item">
+                        <span class="tag tag--ok" style="padding:0 6px;height:18px">成功</span>
+                        <span class="tool-trace__name">analyzeResume</span>
+                        <span class="muted">简历 ID 101</span>
+                      </div>
+                      <div class="tool-trace__item">
+                        <span class="tag tag--ok" style="padding:0 6px;height:18px">成功</span>
+                        <span class="tool-trace__name">analyzeJob</span>
+                        <span class="muted">岗位 ID 201（复用了已有分析）</span>
+                      </div>
+                      <div class="tool-trace__item">
+                        <span class="tag tag--ok" style="padding:0 6px;height:18px">成功</span>
+                        <span class="tool-trace__name">matchResumeToJob</span>
+                        <span class="muted">生成匹配记录 #701</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 用户追问 -->
+              <div class="msg msg--user">
+                <div class="msg__avatar">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+                </div>
+                <div class="msg__body">
+                  <div class="msg__name">我</div>
+                  <div class="msg__bubble">那我该怎么补 Docker 这部分？我完全没接触过。</div>
+                </div>
+              </div>
+
+              <!-- 等待态（非流式：整体等待，不逐字输出） -->
+              <div class="msg msg--ai">
+                <div class="msg__avatar">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>
+                </div>
+                <div class="msg__body">
+                  <div class="msg__name">求职助手</div>
+                  <div class="msg__bubble">
+                    <div class="row"><span class="spinner"></span><span class="small muted">正在思考…（最长等待 120 秒）</span></div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 输入区 -->
+          <div class="chat__composer">
+            <div class="chat__composer-inner">
+
+              <!-- 可选上下文：不选也能提问 -->
+              <div class="ctx-picker">
+                <span class="small muted">引用上下文（可选）：</span>
+                <span class="ctx-chip is-on">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+                  Java后端简历
+                </span>
+                <span class="ctx-chip is-on">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+                  Java 后端开发实习生
+                </span>
+                <span class="ctx-chip">+ 选择简历</span>
+                <span class="ctx-chip">+ 选择岗位</span>
+              </div>
+
+              <div class="chat__input-row">
+                <textarea class="chat__input" rows="1" placeholder="问点什么，比如「我的简历还缺什么」"></textarea>
+                <button class="btn btn--primary" style="height:34px">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-3-6z"/><path d="M11 14l9-10"/></svg>
+                  发送
+                </button>
+              </div>
+              <p class="small muted mt-8">
+                助手只基于你的简历、岗位与系统分析结果作答，不会编造数据。单次提问最多调用 5 个工具。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---------- 空态 ---------- -->
+        <div data-switch-panel="ag" data-switch-target="empty" class="agent-pane is-hidden">
+          <div class="chat__scroll" style="display:flex;align-items:center;justify-content:center">
+            <div style="max-width:560px;text-align:center">
+              <div class="empty__icon" style="width:64px;height:64px;border-radius:20px;margin:0 auto 16px">
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6"/><circle cx="9" cy="14" r="1.2"/><circle cx="15" cy="14" r="1.2"/></svg>
+              </div>
+              <h2 style="font-size:19px;margin-bottom:8px">我是你的求职助手</h2>
+              <p class="muted mb-20" style="line-height:1.8">
+                我可以读你的简历与目标岗位，帮你分析匹配情况、找出差距、准备面试。
+                所有结论都基于系统里的真实数据，不会凭空推测。
+              </p>
+
+              <div style="display:flex;flex-direction:column;gap:8px;text-align:left">
+                <button class="btn" style="height:auto;padding:12px 14px;justify-content:flex-start">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>
+                  帮我分析一下我的简历，看看适合投什么方向
+                </button>
+                <button class="btn" style="height:auto;padding:12px 14px;justify-content:flex-start">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+                  我的简历和 Java 后端岗位差在哪，怎么补
+                </button>
+                <button class="btn" style="height:auto;padding:12px 14px;justify-content:flex-start">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15a2 2 0 0 1-2 2H8l-4 3V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/><path d="M9 10h6"/></svg>
+                  针对这个岗位帮我准备几个面试问题
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/prototype.js"></script>
+</body>
+</html>

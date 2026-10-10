@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>仪表盘 · 智能求职辅助平台</title>
+<!--
+  页面：首页仪表盘
+  路由：/dashboard（登录后的默认落地页）
+  接口：GET /api/dashboard/summary —— 本页全部数据同源，只需 1 个请求
+        统计卡    ← resumeCount / jobCount / matchCount / interviewCount
+        卡片脚注  ← resumeAnalyzedCount / jobStaleCount / bestMatchScore / interviewOngoingCount
+        最近匹配  ← recentMatches[]（最多 5 条，字段结构同匹配列表）
+        差距概览  ← topGaps[]（MISSING 在前、PARTIAL 在后，最多 3 条）
+        准备清单  ← 由上述计数推导：简历数>0 / 简历分析数>0 / 岗位数>0 /
+                    (岗位分析数>岗位过期数) / 匹配数>0 / 已完成面试数>0
+  说明：本页不再聚合多个列表接口，也不再逐条查询分析状态。
+        接口定义见 docs/API接口设计.md §9，页面规格见 docs/前端原型设计.md §5.2。
+-->
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body data-page="dashboard" data-crumb="总览 / <b>仪表盘</b>">
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+
+    <div class="content">
+      <div class="content__inner">
+
+        <!-- ===== 页头 ===== -->
+        <div class="page-head">
+          <div class="page-head__text">
+            <h1>下午好，求职者</h1>
+            <p class="page-head__desc">这里是你的求职准备进度总览。完成下方清单，即可生成第一份匹配报告。</p>
+          </div>
+          <div class="page-head__actions">
+            <button class="btn btn--primary" data-modal-open="md-upload">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              上传简历
+            </button>
+          </div>
+        </div>
+
+        <!-- ===== 统计卡 ===== -->
+        <div class="grid grid--4 mb-20">
+          <div class="stat">
+            <div class="stat__label">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+              简历
+            </div>
+            <div class="stat__value">3<small>份</small></div>
+            <div class="stat__foot">2 份已完成 AI 分析</div>
+          </div>
+
+          <div class="stat">
+            <div class="stat__label">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></svg>
+              目标岗位
+            </div>
+            <div class="stat__value">2<small>个</small></div>
+            <div class="stat__foot">1 个岗位描述已更新</div>
+          </div>
+
+          <div class="stat">
+            <div class="stat__label">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+              匹配分析
+            </div>
+            <div class="stat__value">5<small>次</small></div>
+            <div class="stat__foot">最高分 82.4</div>
+          </div>
+
+          <div class="stat">
+            <div class="stat__label">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15a2 2 0 0 1-2 2H8l-4 3V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/><path d="M9 10h6"/></svg>
+              模拟面试
+            </div>
+            <div class="stat__value">2<small>场</small></div>
+            <div class="stat__foot">1 场进行中 · 未完成全部题目</div>
+          </div>
+        </div>
+
+        <div class="grid grid--sidebar">
+
+          <!-- ===== 左栏 ===== -->
+          <div>
+            <!-- 最近匹配 -->
+            <div class="card">
+              <div class="card__head">
+                <h2>最近匹配记录</h2>
+                <a class="btn btn--sm btn--ghost" href="match.html">查看全部</a>
+              </div>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>岗位</th>
+                      <th>使用简历</th>
+                      <th>匹配分</th>
+                      <th>时间</th>
+                      <th class="text-right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <div class="table__primary">Java 后端开发实习生</div>
+                        <div class="table__muted">示例科技</div>
+                      </td>
+                      <td>Java后端简历</td>
+                      <td><span class="tag tag--ok">82.4</span></td>
+                      <td class="table__muted">10-09 14:20</td>
+                      <td class="text-right"><a class="btn btn--sm btn--ghost" href="match-report.html">查看报告</a></td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="table__primary">后端开发工程师（校招）</div>
+                        <div class="table__muted">云启信息</div>
+                      </td>
+                      <td>Java后端简历</td>
+                      <td><span class="tag tag--brand">68.0</span></td>
+                      <td class="table__muted">10-08 21:05</td>
+                      <td class="text-right"><a class="btn btn--sm btn--ghost" href="match-report.html">查看报告</a></td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="table__primary">Java 后端开发实习生</div>
+                        <div class="table__muted">示例科技</div>
+                      </td>
+                      <td>通用版简历</td>
+                      <td><span class="tag tag--brand">74.5</span></td>
+                      <td class="table__muted">10-07 16:42</td>
+                      <td class="text-right"><a class="btn btn--sm btn--ghost" href="match-report.html">查看报告</a></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 能力差距概览（数据源：summary.topGaps，最多 3 条） -->
+            <div class="card">
+              <div class="card__head">
+                <h2>能力差距概览</h2>
+                <span class="card__sub">来自最近一次匹配</span>
+              </div>
+              <div class="card__body">
+                <div class="alert alert--warn mb-16">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>
+                  <div>以下项在简历中<strong>未找到证据</strong>，不代表你一定不具备该能力，建议核对后补充。</div>
+                </div>
+
+                <div class="gap-item">
+                  <span class="tag tag--danger">未体现</span>
+                  <span>岗位要求 Docker，简历未体现相关证据</span>
+                </div>
+                <div class="gap-item">
+                  <span class="tag tag--warn">部分匹配</span>
+                  <span>项目部署经验：有相关表述，但缺少具体环境与结果</span>
+                </div>
+                <div class="gap-item">
+                  <span class="tag tag--warn">部分匹配</span>
+                  <span>Redis：仅出现在技能列表，缺少使用场景</span>
+                </div>
+              </div>
+              <div class="card__foot">
+                <a class="btn btn--sm" href="match-report.html">查看完整差距分析</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== 右栏 ===== -->
+          <div>
+            <!-- 求职准备清单 -->
+            <div class="card">
+              <div class="card__head">
+                <h2>求职准备清单</h2>
+              </div>
+              <div class="card__body card__body--tight">
+                <div class="row mb-12">
+                  <span class="spacer small muted">已完成 3 / 6</span>
+                  <span class="small strong">50%</span>
+                </div>
+                <div class="bar mb-16"><div class="bar__fill" style="width:50%"></div></div>
+
+                <div class="item-list">
+                  <div class="item" style="padding:10px 0">
+                    <span class="tag tag--ok" style="width:22px;justify-content:center;padding:0">✓</span>
+                    <div class="item__main"><div class="item__title">上传第一份简历</div></div>
+                    <a class="btn btn--sm btn--ghost" href="resumes.html">查看</a>
+                  </div>
+                  <div class="item" style="padding:10px 0">
+                    <span class="tag tag--ok" style="width:22px;justify-content:center;padding:0">✓</span>
+                    <div class="item__main"><div class="item__title">完成简历 AI 分析</div></div>
+                    <a class="btn btn--sm btn--ghost" href="resume-analysis.html">查看</a>
+                  </div>
+                  <div class="item" style="padding:10px 0">
+                    <span class="tag tag--ok" style="width:22px;justify-content:center;padding:0">✓</span>
+                    <div class="item__main"><div class="item__title">录入目标岗位</div></div>
+                    <a class="btn btn--sm btn--ghost" href="jobs.html">查看</a>
+                  </div>
+                  <div class="item" style="padding:10px 0">
+                    <span class="tag" style="width:22px;justify-content:center;padding:0">4</span>
+                    <div class="item__main">
+                      <div class="item__title">完成岗位分析</div>
+                      <div class="item__meta">1 个岗位描述已更新，需重新分析</div>
+                    </div>
+                    <a class="btn btn--sm" href="job-analysis.html">去分析</a>
+                  </div>
+                  <div class="item" style="padding:10px 0">
+                    <span class="tag" style="width:22px;justify-content:center;padding:0">5</span>
+                    <div class="item__main"><div class="item__title">生成匹配报告</div></div>
+                    <a class="btn btn--sm" href="match.html">去匹配</a>
+                  </div>
+                  <div class="item" style="padding:10px 0">
+                    <span class="tag" style="width:22px;justify-content:center;padding:0">6</span>
+                    <div class="item__main"><div class="item__title">完成一次模拟面试</div></div>
+                    <a class="btn btn--sm" href="interview.html">去练习</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 快捷入口 -->
+            <div class="card">
+              <div class="card__head"><h2>快捷入口</h2></div>
+              <div class="card__body card__body--tight">
+                <div class="item-list">
+                  <a class="item" href="agent.html" style="padding:12px 0">
+                    <div class="item__icon">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6"/><circle cx="9" cy="14" r="1.2"/><circle cx="15" cy="14" r="1.2"/></svg>
+                    </div>
+                    <div class="item__main">
+                      <div class="item__title">问一问智能体</div>
+                      <div class="item__meta">「帮我分析这份简历适合什么岗位」</div>
+                    </div>
+                  </a>
+                  <a class="item" href="jobs.html" style="padding:12px 0">
+                    <div class="item__icon item__icon--job">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></svg>
+                    </div>
+                    <div class="item__main">
+                      <div class="item__title">录入新岗位</div>
+                      <div class="item__meta">粘贴 JD 原文即可，无需整理格式</div>
+                    </div>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 上传简历弹窗（从本页可直接上传） ===== -->
+<div class="overlay" id="md-upload" style="display:none">
+  <div class="modal">
+    <div class="modal__head">
+      <h2>上传简历</h2>
+      <button class="modal__close" data-modal-close>×</button>
+    </div>
+    <div class="modal__body">
+      <div class="dropzone">
+        <div class="dropzone__icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M8 8l4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        </div>
+        <p><strong>点击选择文件</strong>，或拖拽文件到此处</p>
+        <p class="dropzone__meta">支持 PDF、DOCX，单个文件不超过 10 MB</p>
+      </div>
+
+      <div class="field mt-16">
+        <label class="field__label">简历名称</label>
+        <input class="input" type="text" placeholder="留空则使用原文件名">
+      </div>
+
+      <div class="alert">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        <div>请上传<strong>可复制文本</strong>的 PDF。扫描件无法提取文字，系统会拒绝入库。</div>
+      </div>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-modal-close>取消</button>
+      <button class="btn btn--primary">开始上传</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/prototype.js"></script>
+</body>
+</html>

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>个人中心 · 智能求职辅助平台</title>
+<!--
+  页面：个人中心
+  路由：/profile
+  接口：GET /api/user/profile   读取当前用户资料
+        PUT /api/user/profile   更新昵称与头像（仅这两个字段可改）
+        POST /api/auth/logout   退出登录（服务端不使 Token 失效，由前端清除 localStorage 完成）
+  说明：用户名与邮箱为唯一标识，第一版不提供修改入口；
+        第一版未提供「修改密码」接口，因此本页不设计该功能。
+-->
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body data-page="profile" data-crumb="账号 / <b>个人中心</b>">
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+
+    <div class="content">
+      <div class="content__inner" style="max-width:820px">
+
+        <div class="page-head">
+          <div class="page-head__text">
+            <h1>个人中心</h1>
+            <p class="page-head__desc">管理账号资料与登录状态</p>
+          </div>
+        </div>
+
+        <!-- ===== 资料 ===== -->
+        <div class="card">
+          <div class="card__head">
+            <h2>基本资料</h2>
+            <span class="card__sub">昵称与头像会显示在页面右上角</span>
+          </div>
+          <div class="card__body">
+
+            <div class="row mb-20" style="gap:18px">
+              <div style="width:64px;height:64px;border-radius:50%;background:var(--brand-600);color:#fff;
+                          display:flex;align-items:center;justify-content:center;font-size:24px;flex:0 0 64px">求</div>
+              <div>
+                <div class="row mb-8">
+                  <button class="btn btn--sm">更换头像</button>
+                  <button class="btn btn--sm btn--ghost">移除</button>
+                </div>
+                <div class="small muted">支持 JPG / PNG，建议 200×200 像素以内</div>
+              </div>
+            </div>
+
+            <div class="grid grid--2">
+              <div class="field">
+                <label class="field__label">昵称</label>
+                <input class="input" type="text" value="求职者">
+                <div class="field__hint">可修改，不超过 50 个字符</div>
+              </div>
+
+              <div class="field">
+                <label class="field__label">用户名</label>
+                <input class="input" type="text" value="student01" disabled style="background:#f8fafc;color:var(--ink-400)">
+                <div class="field__hint">登录标识，创建后不可修改</div>
+              </div>
+
+              <div class="field">
+                <label class="field__label">邮箱</label>
+                <input class="input" type="email" value="student01@example.com" disabled style="background:#f8fafc;color:var(--ink-400)">
+                <div class="field__hint">登录标识，创建后不可修改</div>
+              </div>
+
+              <div class="field">
+                <label class="field__label">用户 ID</label>
+                <input class="input" type="text" value="1" disabled style="background:#f8fafc;color:var(--ink-400)">
+                <div class="field__hint">系统内部标识</div>
+              </div>
+            </div>
+          </div>
+          <div class="card__foot">
+            <span class="spacer"></span>
+            <button class="btn">取消</button>
+            <button class="btn btn--primary">保存修改</button>
+          </div>
+        </div>
+
+        <!-- ===== 数据与隐私 ===== -->
+        <div class="card">
+          <div class="card__head"><h2>数据与隐私</h2></div>
+          <div class="card__body">
+            <ul class="bullets">
+              <li>简历文本仅保存在服务端，用于 AI 分析，<strong>不会回传到浏览器</strong>，平台不提供简历原文的预览与下载。</li>
+              <li>删除简历后，简历文件会从服务器同步删除；由该简历产生的分析、匹配与面试记录会<strong>保留</strong>，便于追溯历史结论。</li>
+              <li>智能体对话记录与简历同属个人数据，仅本人可见。</li>
+              <li>登录凭据保存在浏览器本地，退出登录即清除；如使用公共电脑，离开前请退出登录。</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- ===== 登录状态 ===== -->
+        <div class="card">
+          <div class="card__head"><h2>登录状态</h2></div>
+          <div class="card__body">
+            <div class="row">
+              <div class="spacer">
+                <div class="strong">当前设备已登录</div>
+                <div class="small muted mt-8">Token 有效期 2 小时，过期后需重新登录</div>
+              </div>
+              <button class="btn btn--danger">退出登录</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/prototype.js"></script>
+</body>
+</html>

@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原型总览 · 智能求职辅助平台</title>
+<!--
+  页面：原型总览（原型交付物的入口页，不进入 Vue 实现）
+  用途：1) 评审时一页看全所有页面；2) 交给实现 Agent 时作为页面清单与接口映射的速查表。
+  说明：本页是纯静态导航，不属于产品功能，实现阶段不需要对应的路由。
+-->
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/prototype.css">
+<style>
+  .proto-head {
+    background: linear-gradient(160deg, #1e40af 0%, #2563eb 52%, #3b82f6 100%);
+    color: #fff;
+    padding: 46px 40px 42px;
+  }
+  .proto-head h1 { color: #fff; font-size: 27px; }
+  .proto-head p { color: rgba(255,255,255,.82); margin-top: 10px; max-width: 660px; line-height: 1.8; }
+  .proto-head__meta { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 22px; font-size: 13px; color: rgba(255,255,255,.86); }
+  .proto-head__meta span { display: flex; align-items: center; gap: 7px; }
+
+  .pcard {
+    display: flex; flex-direction: column;
+    background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow-sm); overflow: hidden; text-decoration: none;
+    transition: box-shadow .16s, transform .16s, border-color .16s;
+  }
+  .pcard:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); border-color: var(--brand-200); }
+  .pcard__body { padding: 16px 18px 14px; flex: 1; }
+  .pcard__no {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 6px;
+    background: var(--brand-50); color: var(--brand-700);
+    font-size: 11.5px; font-weight: 600; margin-right: 8px;
+  }
+  .pcard__title { font-size: 15px; font-weight: 600; color: var(--ink-900); display: flex; align-items: center; }
+  .pcard__desc { font-size: 12.5px; color: var(--ink-500); margin-top: 8px; line-height: 1.7; min-height: 42px; }
+  .pcard__foot {
+    padding: 10px 18px; border-top: 1px solid var(--line); background: #fbfdff;
+    font-size: 11.5px; color: var(--ink-400);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .pcard__foot code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: #fff; border: 1px solid var(--line); border-radius: 4px;
+    padding: 1px 5px; color: var(--ink-500);
+  }
+  .swatch { display: flex; gap: 10px; flex-wrap: wrap; }
+  .swatch__item { text-align: center; font-size: 11px; color: var(--ink-400); }
+  .swatch__chip { width: 62px; height: 44px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 5px; }
+</style>
+</head>
+<body>
+
+<!-- ===== 头部 ===== -->
+<div class="proto-head">
+  <h1>智能求职辅助平台 · Web 原型</h1>
+  <p>
+    毕业设计《基于 Spring AI 的智能体应用开发》的前端原型。
+    本原型与已完成的后端设计文档一一对应，页面元素直接映射到既有 REST 接口，
+    可作为 Vue 3 实现的直接依据。
+  </p>
+  <div class="proto-head__meta">
+    <span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      13 个页面，覆盖全部 6 个业务模块
+    </span>
+    <span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      现代简约：白底 + 蓝色主色 + 卡片布局
+    </span>
+    <span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      待实现技术栈：Vue 3 + Element Plus + Pinia
+    </span>
+  </div>
+</div>
+
+<div style="max-width:1160px;margin:0 auto;padding:32px 24px 56px">
+
+  <!-- ===== 使用说明 ===== -->
+  <div class="card mb-24">
+    <div class="card__head"><h2>怎么看这套原型</h2></div>
+    <div class="card__body">
+      <div class="grid grid--3">
+        <div>
+          <div class="strong mb-8">1. 直接点击卡片</div>
+          <p class="small muted" style="line-height:1.75">
+            每个页面的 HTML 都是独立可打开的，页面间的按钮、链接、返回已经连通，
+            可以按真实操作路径走一遍完整流程。
+          </p>
+        </div>
+        <div>
+          <div class="strong mb-8">2. 页内的演示控件</div>
+          <p class="small muted" style="line-height:1.75">
+            标注「原型演示」的切换器用来查看同一页面的不同状态
+            （未分析、加载中、失败、已删除等）。实现阶段这些状态由接口返回值驱动，切换器本身会被删除。
+          </p>
+        </div>
+        <div>
+          <div class="strong mb-8">3. 页面顶部的注释</div>
+          <p class="small muted" style="line-height:1.75">
+            每个 HTML 的源码顶部注明了路由、对应接口与关键业务规则，
+            交给实现 Agent 时可直接读取，无需另行对照文档。
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 页面清单 ===== -->
+  <h2 class="mb-16">页面清单</h2>
+
+  <div class="grid grid--3 mb-24">
+
+    <!-- 未登录 -->
+    <a class="pcard" href="login.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">01</span>登录 / 注册</div>
+        <div class="pcard__desc">左侧品牌介绍 + 右侧表单，登录与注册同页切换。含密码规则提示与登录失败态。</div>
+      </div>
+      <div class="pcard__foot"><code>/login</code><code>POST /api/auth/login</code></div>
+    </a>
+
+    <!-- 总览 -->
+    <a class="pcard" href="dashboard.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">02</span>仪表盘</div>
+        <div class="pcard__desc">四项统计、最近匹配记录、能力差距概览、求职准备清单与快捷入口。</div>
+      </div>
+      <div class="pcard__foot"><code>/dashboard</code><code>GET /api/dashboard/summary</code></div>
+    </a>
+
+    <a class="pcard" href="agent.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">03</span>求职智能体</div>
+        <div class="pcard__desc">左侧会话列表 + 中间对话区，AI 回复下方展示本次调用的工具与执行状态。含空态引导。</div>
+      </div>
+      <div class="pcard__foot"><code>/agent</code><code>POST /api/agent/chat</code></div>
+    </a>
+
+    <!-- 求职材料 -->
+    <a class="pcard" href="resumes.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">04</span>简历管理</div>
+        <div class="pcard__desc">上传弹窗、简历列表（含分析状态）、发起分析、删除确认。含上传成功与失败提示。</div>
+      </div>
+      <div class="pcard__foot"><code>/resumes</code><code>POST /api/resumes</code></div>
+    </a>
+
+    <a class="pcard" href="resume-analysis.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">05</span>简历 AI 分析</div>
+        <div class="pcard__desc">概述、技能清单（含证据）、优势与待改进、改进建议。三态：已分析 / 未分析 / 失败。</div>
+      </div>
+      <div class="pcard__foot"><code>/resumes/:id/analysis</code><code>GET .../analysis</code></div>
+    </a>
+
+    <a class="pcard" href="jobs.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">06</span>岗位管理</div>
+        <div class="pcard__desc">岗位列表、新建与编辑弹窗（描述 10000 字符计数）、删除确认、分析过期标记。</div>
+      </div>
+      <div class="pcard__foot"><code>/jobs</code><code>POST /api/jobs</code></div>
+    </a>
+
+    <a class="pcard" href="job-analysis.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">07</span>岗位 AI 分析</div>
+        <div class="pcard__desc">职责、必备与加分技能、技术栈、学历经验要求。三态：已分析 / 已过期 / 未分析。</div>
+      </div>
+      <div class="pcard__foot"><code>/jobs/:id/analysis</code><code>GET .../analysis</code></div>
+    </a>
+
+    <!-- AI 分析 -->
+    <a class="pcard" href="match.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">08</span>岗位匹配</div>
+        <div class="pcard__desc">匹配记录列表与新建匹配弹窗。弹窗内置「双方都需已分析」的前置校验与引导。</div>
+      </div>
+      <div class="pcard__foot"><code>/matches</code><code>POST /api/matches</code></div>
+    </a>
+
+    <a class="pcard" href="match-report.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">09</span>匹配报告 + 能力差距</div>
+        <div class="pcard__desc">总分环、五维得分、已匹配/部分匹配/未体现三栏、能力差距与改进建议。</div>
+      </div>
+      <div class="pcard__foot"><code>/matches/:id</code><code>GET /api/matches/{id}</code></div>
+    </a>
+
+    <a class="pcard" href="interview.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">10</span>AI 面试列表</div>
+        <div class="pcard__desc">面试记录列表与创建弹窗（岗位、名称、题型白名单、题数 1–20），含出题等待与失败态。</div>
+      </div>
+      <div class="pcard__foot"><code>/interviews</code><code>POST /api/interviews</code></div>
+    </a>
+
+    <a class="pcard" href="interview-session.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">11</span>模拟面试答题</div>
+        <div class="pcard__desc">左侧题目导航 + 答题区 + AI 评价（得分、点评、参考答案、建议）。三态：未作答 / 评价中 / 已评价。</div>
+      </div>
+      <div class="pcard__foot"><code>/interviews/:id</code><code>POST .../answer</code></div>
+    </a>
+
+    <a class="pcard" href="interview-report.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">12</span>面试报告</div>
+        <div class="pcard__desc">总分、分类得分、逐题明细与提升建议。两态：已完成（有总分）/ 未完成（部分统计）。</div>
+      </div>
+      <div class="pcard__foot"><code>/interviews/:id/report</code><code>GET .../report</code></div>
+    </a>
+
+    <a class="pcard" href="profile.html">
+      <div class="pcard__body">
+        <div class="pcard__title"><span class="pcard__no">13</span>个人中心</div>
+        <div class="pcard__desc">昵称与头像编辑、只读的用户名与邮箱、数据与隐私说明、退出登录。</div>
+      </div>
+      <div class="pcard__foot"><code>/profile</code><code>PUT /api/user/profile</code></div>
+    </a>
+
+  </div>
+
+  <!-- ===== 视觉规范摘要 ===== -->
+  <div class="card">
+    <div class="card__head">
+      <h2>视觉规范摘要</h2>
+      <span class="card__sub">完整规范见 docs/前端原型设计.md</span>
+    </div>
+    <div class="card__body">
+
+      <!-- 品牌资源 -->
+      <h3 class="mb-12">品牌资源</h3>
+
+      <div class="row mb-16" style="gap:24px;align-items:flex-end;flex-wrap:wrap">
+        <div style="text-align:center">
+          <img src="assets/logo.svg" width="118" height="118" alt="主图标" style="display:block">
+          <div class="small muted mt-8" style="font-size:11px">主图标</div>
+        </div>
+        <div style="text-align:center">
+          <img src="assets/favicon.svg" width="48" height="48" alt="站点图标 48px" style="display:block">
+          <div class="small muted mt-8" style="font-size:11px">48px</div>
+        </div>
+        <div style="text-align:center">
+          <img src="assets/favicon.svg" width="32" height="32" alt="站点图标 32px" style="display:block">
+          <div class="small muted mt-8" style="font-size:11px">32px</div>
+        </div>
+        <div style="text-align:center">
+          <img src="assets/favicon.svg" width="16" height="16" alt="站点图标 16px" style="display:block">
+          <div class="small muted mt-8" style="font-size:11px">16px</div>
+        </div>
+      </div>
+
+      <img src="assets/logo-horizontal.svg" width="266" alt="组合 Logo" style="display:block;margin-bottom:16px">
+
+      <p class="small muted" style="line-height:1.75">
+        形象为「可爱 AI 机器人 + 简历 + 星星」：<strong>圆角方形的头部与简历卡片是同一种形状语言</strong>，
+        机器人本身就像一份站着的小简历。空气感来自两根薄荷绿的星与斜持的卡片，紫色身体与蓝色头部形成主次。
+      </p>
+      <p class="small muted mt-8" style="line-height:1.75">
+        <strong>16px 的标签页图标是独立设计的</strong>，不是主图标的缩小版 —— 小尺寸下只保留头部与五官，
+        去掉天线、卡片与星星，让头部占满画布。实测该版本在 16px 下五官仍是精确的品牌深蓝灰像素。
+      </p>
+      <p class="small muted mt-8" style="line-height:1.75">
+        全套资源（SVG / PNG / ICO）见
+        <code style="font-family:ui-monospace,Menlo,Consolas,monospace;background:#fff;border:1px solid var(--line);border-radius:4px;padding:1px 5px">career-pilot-web/public/images/brand/</code>
+        · 页面标题统一为「页面名 · 智能求职辅助平台」
+      </p>
+
+      <div class="divider"></div>
+
+      <div class="grid grid--3">
+
+        <div>
+          <h3 class="mb-12">主色与语义色</h3>
+          <div class="swatch">
+            <div class="swatch__item">
+              <div class="swatch__chip" style="background:#2563eb"></div>
+              #2563EB 主色
+            </div>
+            <div class="swatch__item">
+              <div class="swatch__chip" style="background:#eff6ff"></div>
+              #EFF6FF 主色浅
+            </div>
+            <div class="swatch__item">
+              <div class="swatch__chip" style="background:#059669"></div>
+              #059669 成功
+            </div>
+            <div class="swatch__item">
+              <div class="swatch__chip" style="background:#d97706"></div>
+              #D97706 警告
+            </div>
+            <div class="swatch__item">
+              <div class="swatch__chip" style="background:#dc2626"></div>
+              #DC2626 危险
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="mb-12">中性色</h3>
+          <div class="swatch">
+            <div class="swatch__item">
+              <div class="swatch__chip" style="background:#0f172a"></div>
+              #0F172A 标题
+            </div>
+            <div class="swatch__item">
+              <div class="swatch__chip" style="background:#334155"></div>
+              #334155 正文
+            </div>
+            <div class="swatch__item">
+              <div class="swatch__chip" style="background:#94a3b8"></div>
+              #94A3B8 辅助
+            </div>
+            <div class="swatch__item">
+              <div class="swatch__chip" style="background:#e2e8f0"></div>
+              #E2E8F0 描边
+            </div>
+            <div class="swatch__item">
+              <div class="swatch__chip" style="background:#f8fafc"></div>
+              #F8FAFC 背景
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="mb-12">形状与排版</h3>
+          <ul class="bullets">
+            <li>圆角：控件 6px，卡片 10px，弹窗 14px</li>
+            <li>阴影：卡片单层轻投影，弹窗提升至 0 12px 32px</li>
+            <li>字号：正文 14px，次级 13px，辅助 12px，标题 17–22px</li>
+            <li>字体：系统字体栈，中文优先 PingFang SC / 微软雅黑</li>
+            <li>间距：以 4px 为基数，卡片内边距 18px，卡片间距 16px</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <p class="small muted mt-24" style="text-align:center">
+    智能求职辅助平台 · 原型交付物 · 实现阶段请配合 docs/前端原型设计.md 使用
+  </p>
+
+</div>
+
+<script src="assets/prototype.js"></script>
+</body>
+</html>

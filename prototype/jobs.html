@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>岗位管理 · 智能求职辅助平台</title>
+<!--
+  页面：岗位管理
+  路由：/jobs
+  接口：POST   /api/jobs                新建（companyName 可选、jobName 必填、description 必填 ≤10000 字符）
+        GET    /api/jobs?page&size       列表
+        PUT    /api/jobs/{id}            更新（描述变更后旧分析即视为过期）
+        DELETE /api/jobs/{id}            删除（逻辑删除，关联分析记录保留）
+        POST   /api/jobs/{id}/analyze    发起分析
+        GET    /api/jobs/{id}/analysis   读取分析状态与结果
+  边界：岗位描述更新后，旧分析不会自动作废，但会标记为「基于旧版描述」；
+        用户进入分析页时会看到过期提示，并可就地重新分析。
+        列表接口每条记录含 analyzed 与 stale 字段（API V1.3）：
+        !analyzed → 未分析；analyzed && stale → 分析已过期；analyzed && !stale → 已分析。
+-->
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body data-page="jobs" data-crumb="求职材料 / <b>岗位管理</b>">
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+
+    <div class="content">
+      <div class="content__inner">
+
+        <div class="page-head">
+          <div class="page-head__text">
+            <h1>岗位管理</h1>
+            <p class="page-head__desc">粘贴目标岗位的招聘原文，系统会自动提取职责、必备技能与加分项</p>
+          </div>
+          <div class="page-head__actions">
+            <button class="btn btn--primary" data-modal-open="md-job">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              新建岗位
+            </button>
+          </div>
+        </div>
+
+        <!-- ===== 岗位列表 ===== -->
+        <div class="card">
+          <div class="card__head">
+            <h2>我的目标岗位</h2>
+            <span class="card__sub">共 2 个</span>
+          </div>
+
+          <div class="item-list">
+            <div class="item">
+              <div class="item__icon item__icon--job">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></svg>
+              </div>
+              <div class="item__main">
+                <div class="item__title">
+                  Java 后端开发实习生
+                  <span class="tag tag--warn">分析已过期</span>
+                </div>
+                <div class="item__meta">示例科技 · 创建于 2026-10-08 · 描述更新于 2026-10-09 11:30</div>
+              </div>
+              <div class="item__actions">
+                <a class="btn btn--sm" href="job-analysis.html">查看分析</a>
+                <button class="btn btn--sm" data-modal-open="md-job">编辑</button>
+                <button class="btn btn--sm btn--danger" data-modal-open="md-delete-job">删除</button>
+              </div>
+            </div>
+
+            <div class="item">
+              <div class="item__icon item__icon--job">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></svg>
+              </div>
+              <div class="item__main">
+                <div class="item__title">
+                  后端开发工程师（校招）
+                  <span class="tag tag--ok">已分析</span>
+                </div>
+                <div class="item__meta">云启信息 · 创建于 2026-10-07 · 分析版本 v1</div>
+              </div>
+              <div class="item__actions">
+                <a class="btn btn--sm" href="job-analysis.html">查看分析</a>
+                <button class="btn btn--sm" data-modal-open="md-job">编辑</button>
+                <button class="btn btn--sm btn--danger" data-modal-open="md-delete-job">删除</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 空态（无岗位时替换上方 item-list） -->
+          <!--
+          <div class="empty">
+            <div class="empty__icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></svg>
+            </div>
+            <h3>还没有目标岗位</h3>
+            <p>把想投递的岗位 JD 原文粘贴进来，系统会提取岗位要求，用于简历匹配与模拟面试出题。</p>
+            <button class="btn btn--primary" data-modal-open="md-job">新建岗位</button>
+          </div>
+          -->
+
+          <div class="card__foot">
+            <div class="pagination">
+              <span class="pagination__info">共 2 条</span>
+              <button class="pagination__btn" disabled>‹</button>
+              <button class="pagination__btn is-active">1</button>
+              <button class="pagination__btn" disabled>›</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 新建 / 编辑岗位 ===== -->
+<div class="overlay" id="md-job" style="display:none">
+  <div class="modal modal--wide">
+    <div class="modal__head">
+      <h2>编辑岗位</h2>
+      <button class="modal__close" data-modal-close>×</button>
+    </div>
+    <div class="modal__body">
+      <div class="grid grid--2">
+        <div class="field">
+          <label class="field__label">公司名称</label>
+          <input class="input" type="text" value="示例科技" placeholder="选填，如：示例科技">
+        </div>
+        <div class="field">
+          <label class="field__label">岗位名称<span class="req">*</span></label>
+          <input class="input" type="text" value="Java 后端开发实习生" placeholder="如：Java 后端开发实习生">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field__label">岗位描述<span class="req">*</span></label>
+        <textarea class="textarea" style="min-height:180px" placeholder="直接粘贴招聘网站的 JD 原文即可，无需整理格式">岗位职责：
+1. 参与公司核心业务系统的后端开发，负责接口设计与实现；
+2. 配合前端完成联调，参与需求评审与技术方案讨论；
+3. 参与系统性能优化与线上问题排查。
+
+任职要求：
+1. 本科及以上学历，计算机相关专业，2026 届毕业生；
+2. 熟悉 Java 基础，了解集合、多线程、JVM 基础知识；
+3. 熟悉 Spring Boot、MyBatis 等主流框架；
+4. 熟悉 MySQL，了解索引原理与常见优化手段；
+5. 有良好的编码习惯与文档意识。
+
+加分项：
+1. 了解 Redis、消息队列等中间件；
+2. 熟悉 Docker、Linux 常用命令，有服务器部署经验；
+3. 有开源项目或个人技术博客。</textarea>
+        <div class="counter">328 / 10000</div>
+      </div>
+
+      <div class="alert alert--warn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>
+        <div>修改岗位描述后，已有分析会标记为「基于旧版描述」，需要重新分析才能用于匹配。</div>
+      </div>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-modal-close>取消</button>
+      <button class="btn btn--primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 删除岗位确认 ===== -->
+<div class="overlay" id="md-delete-job" style="display:none">
+  <div class="modal">
+    <div class="modal__head">
+      <h2>删除这个岗位？</h2>
+      <button class="modal__close" data-modal-close>×</button>
+    </div>
+    <div class="modal__body">
+      <p class="mb-12">即将删除「<span class="strong">Java 后端开发实习生</span>」。</p>
+      <ul class="bullets bullets--danger">
+        <li>岗位不再出现在列表中，也无法用于新的匹配与面试。</li>
+        <li>由该岗位产生的<strong>分析与匹配记录会保留</strong>，便于追溯历史结论。</li>
+      </ul>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-modal-close>取消</button>
+      <button class="btn btn--danger">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/prototype.js"></script>
+</body>
+</html>

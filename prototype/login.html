@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登录 / 注册 · 智能求职辅助平台</title>
+<!--
+  页面：登录 / 注册（未认证页，独立布局，不使用应用骨架）
+  路由：/login  /register
+  接口：POST /api/auth/register、POST /api/auth/login
+  说明：登录成功后写入 localStorage.token 与 user，并跳转 /dashboard
+-->
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/prototype.css">
+<style>
+  .auth { display: grid; grid-template-columns: 1.05fr .95fr; min-height: 100vh; }
+
+  /* 左侧品牌区 */
+  .auth__brand {
+    background:
+      radial-gradient(900px 460px at 12% 8%, rgba(255,255,255,.16), transparent 62%),
+      linear-gradient(160deg, #1e40af 0%, #2563eb 46%, #3b82f6 100%);
+    color: #fff;
+    padding: 56px 60px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .auth__logo { display: flex; align-items: center; gap: 11px; }
+  .auth__logo-mark {
+    width: 38px; height: 38px; border-radius: 11px;
+    background: rgba(255,255,255,.18);
+    border: 1px solid rgba(255,255,255,.28);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .auth__logo-text { font-size: 16px; font-weight: 600; }
+  .auth__headline { font-size: 32px; font-weight: 600; line-height: 1.35; margin: 0; color: #fff; }
+  .auth__sub { font-size: 14px; color: rgba(255,255,255,.8); margin-top: 14px; max-width: 400px; line-height: 1.75; }
+  .auth__feats { display: flex; flex-direction: column; gap: 13px; margin-top: 30px; }
+  .auth__feat { display: flex; align-items: center; gap: 11px; font-size: 13.5px; color: rgba(255,255,255,.9); }
+  .auth__feat-ico {
+    width: 30px; height: 30px; flex: 0 0 30px; border-radius: 9px;
+    background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center;
+  }
+  .auth__foot { font-size: 12px; color: rgba(255,255,255,.6); }
+
+  /* 右侧表单区 */
+  .auth__panel {
+    display: flex; align-items: center; justify-content: center;
+    padding: 40px 32px; background: var(--bg);
+  }
+  .auth__card {
+    width: 100%; max-width: 380px;
+    background: #fff; border: 1px solid var(--line); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow); padding: 30px 30px 26px;
+  }
+  .auth__tabs { display: flex; gap: 4px; background: #f1f5f9; border-radius: var(--radius-sm); padding: 4px; margin-bottom: 24px; }
+  .auth__tab {
+    flex: 1; height: 32px; border: none; background: transparent; border-radius: var(--radius-sm);
+    font-family: inherit; font-size: 13.5px; color: var(--ink-500); cursor: pointer; transition: all .15s;
+  }
+  .auth__tab.is-active { background: #fff; color: var(--ink-900); font-weight: 500; box-shadow: var(--shadow-sm); }
+  .auth__title { font-size: 19px; margin-bottom: 4px; }
+  .auth__desc { font-size: 13px; color: var(--ink-500); margin-bottom: 22px; }
+
+  @media (max-width: 900px) {
+    .auth { grid-template-columns: 1fr; }
+    .auth__brand { padding: 32px 28px; }
+    .auth__headline { font-size: 24px; }
+    .auth__feats, .auth__foot { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="auth">
+
+  <!-- ===== 左：品牌区 ===== -->
+  <section class="auth__brand">
+    <div class="auth__logo">
+      <div class="auth__logo-mark">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/>
+          <path d="M18.5 16.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>
+        </svg>
+      </div>
+      <div class="auth__logo-text">智能求职辅助平台</div>
+    </div>
+
+    <div>
+      <h1 class="auth__headline">让 AI 帮你把求职准备<br>做得更扎实</h1>
+      <p class="auth__sub">
+        基于 Spring AI 与 DeepSeek 的智能体应用。从简历诊断到岗位匹配，
+        再到模拟面试，把每一步都变成有依据的改进建议。
+      </p>
+
+      <div class="auth__feats">
+        <div class="auth__feat">
+          <div class="auth__feat-ico">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+          </div>
+          简历智能分析：技能、经历、优势与改进建议
+        </div>
+        <div class="auth__feat">
+          <div class="auth__feat-ico">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+          </div>
+          岗位匹配：五维评分与可追溯的匹配证据
+        </div>
+        <div class="auth__feat">
+          <div class="auth__feat-ico">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15a2 2 0 0 1-2 2H8l-4 3V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/><path d="M9 10h6"/></svg>
+          </div>
+          模拟面试：按岗位出题、逐题评分与参考答案
+        </div>
+        <div class="auth__feat">
+          <div class="auth__feat-ico">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6"/></svg>
+          </div>
+          求职智能体：用对话完成分析与匹配，过程可追溯
+        </div>
+      </div>
+    </div>
+
+    <div class="auth__foot">本科毕业设计 · 基于 Spring AI 的智能体应用开发</div>
+  </section>
+
+  <!-- ===== 右：表单区 ===== -->
+  <section class="auth__panel">
+    <div class="auth__card">
+
+      <div class="auth__tabs">
+        <button class="auth__tab is-active" data-switch="auth" data-switch-target="login">登录</button>
+        <button class="auth__tab" data-switch="auth" data-switch-target="register">注册</button>
+      </div>
+
+      <!-- ---------- 登录 ---------- -->
+      <div data-switch-panel="auth" data-switch-target="login">
+        <h2 class="auth__title">欢迎回来</h2>
+        <p class="auth__desc">使用用户名或邮箱登录你的账号</p>
+
+        <!-- 错误态演示：接口返回 40100 时显示，不区分「未注册」与「密码错误」 -->
+        <div class="alert alert--danger mb-16">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+          <div>用户名或密码错误，请重新输入</div>
+        </div>
+
+        <div class="field">
+          <label class="field__label">账号<span class="req">*</span></label>
+          <input class="input" type="text" placeholder="用户名或邮箱" autocomplete="username">
+        </div>
+
+        <div class="field">
+          <label class="field__label">密码<span class="req">*</span></label>
+          <input class="input" type="password" placeholder="请输入密码" autocomplete="current-password">
+        </div>
+
+        <button class="btn btn--primary btn--lg btn--block mt-8">登录</button>
+
+        <p class="small muted mt-16" style="text-align:center">
+          还没有账号？<a href="#" data-switch="auth" data-switch-target="register">立即注册</a>
+        </p>
+      </div>
+
+      <!-- ---------- 注册 ---------- -->
+      <div data-switch-panel="auth" data-switch-target="register" style="display:none">
+        <h2 class="auth__title">创建账号</h2>
+        <p class="auth__desc">注册后即可上传简历并开始 AI 分析</p>
+
+        <div class="field">
+          <label class="field__label">用户名<span class="req">*</span></label>
+          <input class="input" type="text" placeholder="3–50 个字符，全站唯一">
+          <div class="field__hint">用于登录，创建后不可修改</div>
+        </div>
+
+        <div class="field">
+          <label class="field__label">邮箱<span class="req">*</span></label>
+          <input class="input" type="email" placeholder="name@example.com">
+          <!-- 唯一性校验失败态：input 加 .input--error，下方显示 field__error -->
+          <div class="field__hint">用于登录，全站唯一</div>
+        </div>
+
+        <div class="field">
+          <label class="field__label">密码<span class="req">*</span></label>
+          <input class="input" type="password" placeholder="不少于 8 位">
+          <div class="field__hint">长度不少于 8 位，且同时包含字母与数字</div>
+        </div>
+
+        <div class="field">
+          <label class="field__label">确认密码<span class="req">*</span></label>
+          <input class="input" type="password" placeholder="再次输入密码">
+        </div>
+
+        <button class="btn btn--primary btn--lg btn--block mt-8">注册并登录</button>
+
+        <p class="small muted mt-16" style="text-align:center">
+          已有账号？<a href="#" data-switch="auth" data-switch-target="login">返回登录</a>
+        </p>
+      </div>
+
+      <p class="small muted mt-16" style="text-align:center;line-height:1.7">
+        登录状态保存在浏览器本地，简历与岗位数据仅本人可见
+      </p>
+    </div>
+  </section>
+
+</div>
+
+<script src="assets/prototype.js"></script>
+</body>
+</html>
