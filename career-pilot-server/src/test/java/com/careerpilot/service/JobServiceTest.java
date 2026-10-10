@@ -1,0 +1,206 @@
+package com.careerpilot.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.when;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
+import java.util.HexFormat;
+import java.util.List;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.careerpilot.common.BusinessException;
+import com.careerpilot.common.PageQuery;
+import com.careerpilot.common.PageResult;
+import com.careerpilot.dto.JobDetail;
+import com.careerpilot.dto.JobSaveRequest;
+import com.careerpilot.dto.JobView;
+import com.careerpilot.entity.Job;
+import com.careerpilot.entity.JobAnalysis;
+import com.careerpilot.mapper.JobAnalysisMapper;
+import com.careerpilot.mapper.JobMapper;
+
+/**
+ * 岗位 CRUD 与 analyzed/stale 判定的单测（《开发顺序》M5 的「同构性检查」）。
+ *
+ * 本类是 M5 唯一覆盖**列表批量 stale 判定**的地方（三态：无分析 / 同源 / 异源），
+ * 另覆盖详情的单条判定与 PUT 的内存装配（空公司名清空、updatedAt 显式刷新）。
+ * 真库特有的行为（ON UPDATE 时间戳、唯一索引并发）不放这里——按《测试与验收方案》§1.1 放接口层。
+ */
+@ExtendWith(MockitoExtension.class)
+class JobServiceTest {
+
+    @Mock
+    private JobMapper jobMapper;
+
+    @Mock
+    private JobAnalysisMapper jobAnalysisMapper;
+
+    private JobService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new JobService(jobMapper, jobAnalysisMapper);
+    }
+
+    // ---------------------------------------------------------------- 列表：三态判定
+
+    @Test
+    void list_marksAnalyzedAndStalePerLatestSuccess() {
+        Job noAnalysis = job(1L, "岗位A", "描述A");
+        Job fresh = job(2L, "岗位B", "描述B");
+        Job outdated = job(3L, "岗位C", "描述C-当前");
+        doReturn(pageOf(noAnalysis, fresh, outdated)).when(jobMapper).selectPage(any(), any());
+        when(jobAnalysisMapper.selectList(any())).thenReturn(List.of(
+                analysis(2L, 1, sha256("描述B")),           // 同源 → 不过期
+                analysis(3L, 1, sha256("描述C-旧"))));      // 异源 → 过期
+
+        PageResult<JobView> result = service.list(1L, new PageQuery());
+
+        assertThat(result.getTotal()).isEqualTo(3);
+        assertThat(result.getRecords().get(0).isAnalyzed()).isFalse();
+        assertThat(result.getRecords().get(0).isStale()).isFalse();    // 无分析 → stale 恒 false
+        assertThat(result.getRecords().get(1).isAnalyzed()).isTrue();
+        assertThat(result.getRecords().get(1).isStale()).isFalse();
+        assertThat(result.getRecords().get(2).isAnalyzed()).isTrue();
+        assertThat(result.getRecords().get(2).isStale()).isTrue();     // 《开发顺序》M5 验收标准 1
+    }
+
+    @Test
+    void list_usesLatestVersionForStaleDecision() {
+        Job jobB = job(2L, "岗位B", "描述B-当前");
+        doReturn(pageOf(jobB)).when(jobMapper).selectPage(any(), any());
+        // 同一岗位的两个版本：v1 异源、v2（最新，同源）→ 应取 v2 判定，为不过期
+        when(jobAnalysisMapper.selectList(any())).thenReturn(List.of(
+                analysis(2L, 1, sha256("描述B-旧")),
+                analysis(2L, 2, sha256("描述B-当前"))));
+
+        PageResult<JobView> result = service.list(1L, new PageQuery());
+
+        assertThat(result.getRecords().get(0).isStale()).isFalse();
+    }
+
+    @Test
+    void list_emptyPage_returnsEmptyWithoutQueryingAnalyses() {
+        doReturn(pageOf()).when(jobMapper).selectPage(any(), any());
+
+        PageResult<JobView> result = service.list(1L, new PageQuery());
+
+        assertThat(result.getRecords()).isEmpty();
+        // 当页无记录时不发 IN 查询（空集短路）
+        org.mockito.Mockito.verifyNoInteractions(jobAnalysisMapper);
+    }
+
+    // ---------------------------------------------------------------- 详情
+
+    @Test
+    void detail_outdatedAnalysis_isAnalyzedAndStale() {
+        when(jobMapper.selectOne(any())).thenReturn(job(5L, "岗位", "描述-当前"));
+        when(jobAnalysisMapper.selectOne(any())).thenReturn(analysis(10L, 1, sha256("描述-旧")));
+
+        JobDetail detail = service.detail(1L, 5L);
+
+        assertThat(detail.isAnalyzed()).isTrue();
+        assertThat(detail.isStale()).isTrue();
+    }
+
+    @Test
+    void getOwnedJob_missingOrForeign_throws404() {
+        when(jobMapper.selectOne(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.detail(1L, 5L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(40400));
+    }
+
+    // ---------------------------------------------------------------- 更新：全量语义与装配
+
+    @Test
+    void update_blankCompanyNameClearedAndUpdatedAtRefreshed() {
+        Job existing = job(5L, "旧岗位名", "旧描述");
+        when(jobMapper.selectOne(any())).thenReturn(existing);
+        when(jobAnalysisMapper.selectOne(any())).thenReturn(analysis(10L, 1, sha256("旧描述")));
+
+        JobDetail detail = service.update(1L, 5L, request("   ", "新岗位名", "新描述"));
+
+        assertThat(detail.getCompanyName()).isNull();                 // 空白 → 清空
+        assertThat(detail.getJobName()).isEqualTo("新岗位名");
+        assertThat(detail.getDescription()).isEqualTo("新描述");
+        assertThat(detail.getUpdatedAt()).isNotNull();                // 内存装配的显式刷新值
+        assertThat(detail.isAnalyzed()).isTrue();
+        assertThat(detail.isStale()).isTrue();                        // 描述变化 → 立即过期
+    }
+
+    @Test
+    void update_unchangedDescriptionStaysFresh() {
+        Job existing = job(5L, "岗位", "描述");
+        when(jobMapper.selectOne(any())).thenReturn(existing);
+        when(jobAnalysisMapper.selectOne(any())).thenReturn(analysis(10L, 1, sha256("描述")));
+
+        JobDetail detail = service.update(1L, 5L, request("示例科技", "岗位", "描述"));
+
+        assertThat(detail.getCompanyName()).isEqualTo("示例科技");
+        assertThat(detail.isStale()).isFalse();                       // 描述未变 → 仍不过期
+    }
+
+    // ---------------------------------------------------------------- 测试数据
+
+    private static Job job(Long id, String jobName, String description) {
+        Job job = new Job();
+        job.setId(id);
+        job.setUserId(1L);
+        job.setCompanyName("示例科技");
+        job.setJobName(jobName);
+        job.setDescription(description);
+        job.setCreatedAt(LocalDateTime.now());
+        job.setUpdatedAt(LocalDateTime.now());
+        return job;
+    }
+
+    private static JobAnalysis analysis(Long jobId, int versionNo, String sourceHash) {
+        JobAnalysis analysis = new JobAnalysis();
+        analysis.setJobId(jobId);
+        analysis.setVersionNo(versionNo);
+        analysis.setSourceHash(sourceHash);
+        analysis.setStatus(JobAnalysis.STATUS_SUCCESS);
+        return analysis;
+    }
+
+    private static JobSaveRequest request(String companyName, String jobName, String description) {
+        JobSaveRequest request = new JobSaveRequest();
+        request.setCompanyName(companyName);
+        request.setJobName(jobName);
+        request.setDescription(description);
+        return request;
+    }
+
+    private static Page<Job> pageOf(Job... jobs) {
+        Page<Job> page = new Page<>(1, 10);
+        page.setRecords(List.of(jobs));
+        page.setTotal(jobs.length);
+        return page;
+    }
+
+    /** 测试内的独立 hash 实现：不复用生产代码，保证"判定的依据"被独立验证 */
+    private static String sha256(String text) {
+        try {
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
+        }
+        catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+}

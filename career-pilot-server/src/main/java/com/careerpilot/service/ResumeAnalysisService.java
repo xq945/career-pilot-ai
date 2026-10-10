@@ -1,10 +1,6 @@
 package com.careerpilot.service;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
-import java.util.HexFormat;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +10,7 @@ import org.springframework.stereotype.Service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.careerpilot.ai.AiCallResult;
 import com.careerpilot.common.BusinessException;
+import com.careerpilot.common.Hashing;
 import com.careerpilot.dto.ResumeAnalysisDetail;
 import com.careerpilot.dto.ResumeAnalysisView;
 import com.careerpilot.dto.ai.ResumeAnalysisAiOutput;
@@ -76,7 +73,7 @@ public class ResumeAnalysisService {
             throw BusinessException.badRequest("简历文本为空，无法分析");
         }
         // 《数据库设计》5.2：source_hash 只对入库后的文本计算，不得重新解析原文件
-        String sourceHash = sha256Hex(content);
+        String sourceHash = Hashing.sha256Hex(content);
         ResumeAnalysis latest = findLatestSuccess(resume.getId());
         if (latest != null && sourceHash.equals(latest.getSourceHash())) {
             log.info("简历内容未变化，复用已有分析：resumeId={} analysisId={} versionNo={}",
@@ -156,19 +153,6 @@ public class ResumeAnalysisService {
                 .orderByDesc(ResumeAnalysis::getVersionNo)
                 .last("LIMIT 1"));
         return latest == null || latest.getVersionNo() == null ? 1 : latest.getVersionNo() + 1;
-    }
-
-    /** SHA-256（UTF-8），小写十六进制 64 位，与列 VARCHAR(64) 对齐 */
-    private static String sha256Hex(String text) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(text.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        }
-        catch (NoSuchAlgorithmException ex) {
-            // JDK 必然内置 SHA-256，属不可达分支
-            throw new IllegalStateException("SHA-256 不可用", ex);
-        }
     }
 
     private static void applyOutput(ResumeAnalysis entity, ResumeAnalysisAiOutput output) {
