@@ -21,9 +21,16 @@ const props = defineProps({
   type: { type: String, required: true },
   /** 选中的资源 id（v-model） */
   modelValue: { type: Number, default: null },
+  /**
+   * 使用场景：
+   * - 'strict'（默认，匹配场景）：未分析/已过期即**就地拦截**，父组件禁用提交；
+   * - 'context'（Agent 对话场景）：只提示不拦截——`matchResumeToJob` 等工具会按需自动补齐分析，
+   *   上下文资源也不要求事先分析。
+   */
+  mode: { type: String, default: 'strict' },
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'select'])
 
 const router = useRouter()
 
@@ -55,8 +62,8 @@ onMounted(load)
 
 const selected = computed(() => records.value.find((item) => item.id === props.modelValue) ?? null)
 
-/** 拦截原因：null = 当前选择可提交；'not-analyzed' / 'stale' 由父组件读取后禁用提交 */
-const blockReason = computed(() => {
+/** 提示原因：null = 无提示；'not-analyzed' / 'stale' */
+const notice = computed(() => {
   const item = selected.value
   if (!item) {
     return null
@@ -71,7 +78,19 @@ const blockReason = computed(() => {
   return null
 })
 
+/**
+ * 拦截原因：null = 当前选择可提交；'not-analyzed' / 'stale' 由父组件读取后禁用提交。
+ * 'context' 模式下恒为 null（只提示不拦截，见 mode 的说明）。
+ */
+const blockReason = computed(() => (props.mode === 'context' ? null : notice.value))
+
 defineExpose({ blockReason })
+
+/** 选中项变化：除了刷新 v-model，还把完整记录抛给父组件（Agent 场景要显示资源名） */
+function selectItem(item) {
+  emit('update:modelValue', item.id)
+  emit('select', item)
+}
 
 /** 拦截提示的跳转入口 */
 function goFix() {
@@ -123,7 +142,7 @@ const itemName = (item) => (isResume.value ? item.name : item.jobName)
             class="picker__radio"
             :name="`pick-${type}`"
             :checked="item.id === modelValue"
-            @change="emit('update:modelValue', item.id)"
+            @change="selectItem(item)"
           >
           <div class="picker__main">
             <div class="picker__title">
@@ -140,16 +159,16 @@ const itemName = (item) => (isResume.value ? item.name : item.jobName)
       </template>
     </div>
 
-    <!-- 就地拦截：不满足匹配前提时的提示与修复入口（不提交、不发出请求） -->
+    <!-- 提示与拦截：strict（匹配）下拦截并禁用提交；context（Agent 对话）下仅提示 -->
     <el-alert
-      v-if="blockReason"
+      v-if="notice"
       class="picker__block"
-      type="warning"
+      :type="mode === 'context' ? 'info' : 'warning'"
       :closable="false"
       show-icon
     >
       <template #title>
-        <template v-if="blockReason === 'not-analyzed'">
+        <template v-if="notice === 'not-analyzed'">
           「{{ itemName(selected) }}」还没有完成分析
         </template>
         <template v-else>
@@ -157,15 +176,25 @@ const itemName = (item) => (isResume.value ? item.name : item.jobName)
         </template>
       </template>
       <p class="picker__block-text">
-        <template v-if="blockReason === 'not-analyzed'">
+        <template v-if="mode === 'context'">
+          仍然可以使用：助手会在需要时自动为你完成分析，无需提前操作。
+        </template>
+        <template v-else-if="notice === 'not-analyzed'">
           匹配需要双方的技能项作为依据，请先完成该{{ isResume ? '简历' : '岗位' }}的分析。
         </template>
         <template v-else>
           岗位描述在分析后已更新，请先重新分析，再基于新版要求发起匹配。
         </template>
       </p>
-      <el-button class="picker__block-btn" size="small" type="warning" plain @click="goFix">
-        {{ blockReason === 'not-analyzed' ? '立即分析' : '去重新分析' }}
+      <el-button
+        v-if="mode !== 'context'"
+        class="picker__block-btn"
+        size="small"
+        type="warning"
+        plain
+        @click="goFix"
+      >
+        {{ notice === 'not-analyzed' ? '立即分析' : '去重新分析' }}
       </el-button>
     </el-alert>
   </div>

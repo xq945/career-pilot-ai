@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 
 import * as authApi from '@/api/auth'
 import * as userApi from '@/api/user'
+import { useAgentStore } from '@/stores/agent'
 import { clearAuth, readToken, readUser, writeAuth, writeUser } from '@/utils/authStorage'
 
 /**
@@ -92,6 +93,8 @@ export const useUserStore = defineStore('user', () => {
     user.value = null
     profileLoaded.value = false
     clearAuth()
+    // 智能体对话是账号私有数据：换账号后不能残留上一个人的会话与消息
+    useAgentStore().reset()
   }
 
   /**

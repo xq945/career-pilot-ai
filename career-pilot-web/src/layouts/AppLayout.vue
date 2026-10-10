@@ -22,9 +22,8 @@ import { useUserStore } from '@/stores/user'
  *
  * 例外页面不套用本布局：登录 / 注册用 AuthLayout（左右分栏）。
  *
- * 导航按 §1.2 的四组结构渲染。未实现的项以 disabled 呈现，避免点击落到未实现的路由
- * 而报 404 —— 后续模块实现时把 ready 改为 true 即可
- * （当前已点亮：仪表盘、简历管理、岗位管理、岗位匹配、AI 面试、个人中心）。
+ * 导航按 §1.2 的四组结构渲染。`ready: false` 的项以 disabled 呈现，避免点击落到未实现
+ * 的路由而报 404 —— 全部模块均已实现，当前所有项均已点亮。
  */
 const route = useRoute()
 const router = useRouter()
@@ -35,7 +34,7 @@ const NAV_GROUPS = [
     label: '总览',
     items: [
       { path: '/dashboard', text: '仪表盘', icon: Odometer, ready: true },
-      { path: '/agent', text: '求职智能体', icon: ChatDotRound, ready: false },
+      { path: '/agent', text: '求职智能体', icon: ChatDotRound, ready: true },
     ],
   },
   {

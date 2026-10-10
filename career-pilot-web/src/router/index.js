@@ -38,6 +38,12 @@ const routes = [
         meta: { title: '仪表盘', group: '总览' },
       },
       {
+        path: 'agent',
+        name: 'agent',
+        component: () => import('@/views/AgentView.vue'),
+        meta: { title: '求职智能体', group: '总览' },
+      },
+      {
         path: 'resumes',
         name: 'resumes',
         component: () => import('@/views/ResumesView.vue'),
