@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * 简历接口（《API接口设计》4.1–4.4）。
+ * 简历接口（《API接口设计》4.1–4.6）。
  *
  * 所有接口的归属校验在后端完成（身份取自 Token），前端不传任何用户标识；
  * 他人简历 ID 一律返回 404（不区分"不存在"与"无权访问"）。
@@ -36,4 +36,24 @@ export function uploadResume(file, name) {
 /** 删除简历（4.4）：逻辑删除 + 服务端物理删除文件；重复删除幂等成功 */
 export function removeResume(id) {
   return request.delete(`/resumes/${id}`)
+}
+
+/**
+ * 发起简历分析（4.5）：无请求体；同步调用通常 10–30 秒。
+ *
+ * AI 接口超时统一设 120 秒（《API接口设计》10.3：与后端总超时对齐）；
+ * 简历内容未变化时后端直接复用已有结果，不重复调用模型（响应很快返回）。
+ */
+export function analyzeResume(id) {
+  return request.post(`/resumes/${id}/analyze`, null, { timeout: 120000 })
+}
+
+/**
+ * 获取最新一版简历分析（4.6）。
+ *
+ * 无分析结果时返回 HTTP 200 + `{ analyzed: false, analysis: null }`（不是 404），
+ * 调用方据 `analyzed` 区分三态，不要把"未分析"当错误处理。
+ */
+export function getResumeAnalysis(id) {
+  return request.get(`/resumes/${id}/analysis`)
 }

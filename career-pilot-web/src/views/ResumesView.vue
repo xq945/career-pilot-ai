@@ -1,5 +1,6 @@
 <script setup>
 import { h, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Plus, UploadFilled } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
@@ -10,16 +11,32 @@ import PaginationBar from '@/components/PaginationBar.vue'
 import StateBlock from '@/components/StateBlock.vue'
 
 /**
- * 简历管理（《前端原型设计》§5.3，接口《API接口设计》4.1–4.4）。
+ * 简历管理（《前端原型设计》§5.3，接口《API接口设计》4.1–4.6）。
  *
- * 页面内容：列表（加载 / 空 / 错误 / 正常四态）+ 上传对话框 + 删除二次确认。
- * 「发起分析」入口属 M4（本阶段状态标签恒为「未分析」）。
+ * 页面内容：列表（加载 / 空 / 错误 / 正常四态）+ 上传对话框 + 删除二次确认
+ * + 分析入口（M4）。
+ *
+ * 分析入口不在此页发起：统一跳转到分析页（`/resumes/:id/analysis`，带 `?auto=1` 自动发起），
+ * 等待态、失败态与重试只实现一处（原型 §6.3 的流程：列表 → 分析页 → 等待 → 结果）。
  *
  * 提示分工（§5.3）：上传的三类失败（41300/41500/400）显示在**弹窗内**并保持弹窗打开
  * （原型 §6.2），成功提示用页内 alert；删除结果用全局提示。
  * 时间字段用 dayjs 解析（API §1：精度不保证，禁止字符串截取）。
  */
 const PAGE_SIZE = 10
+
+const router = useRouter()
+
+/**
+ * 打开分析页；`auto=true` 表示进入后自动发起（未分析的「发起分析」与已分析的「重新分析」）。
+ */
+function openAnalysis(item, auto = false) {
+  router.push({
+    name: 'resume-analysis',
+    params: { id: item.id },
+    query: auto ? { auto: '1' } : {},
+  })
+}
 
 /** 与后端三重校验同规则的客户端预检（仅为体验拦截，权威校验在服务端） */
 const ALLOWED_EXTENSIONS = ['pdf', 'docx', 'doc', 'html', 'htm', 'txt']
@@ -260,6 +277,17 @@ async function handleDelete(item) {
               </div>
             </div>
             <div class="item__actions">
+              <template v-if="item.analyzed">
+                <el-button size="small" @click="openAnalysis(item)">
+                  查看分析
+                </el-button>
+                <el-button size="small" @click="openAnalysis(item, true)">
+                  重新分析
+                </el-button>
+              </template>
+              <el-button v-else size="small" type="primary" @click="openAnalysis(item, true)">
+                发起分析
+              </el-button>
               <el-button size="small" type="danger" plain @click="handleDelete(item)">
                 删除
               </el-button>
@@ -468,6 +496,14 @@ async function handleDelete(item) {
 
 .item__actions {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 多按钮时用 gap 控制间距，去掉 Element Plus 的相邻按钮左边距（避免双份间距） */
+.item__actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 
 /* ---- 上传对话框 ---- */

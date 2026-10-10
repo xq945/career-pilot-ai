@@ -44,6 +44,12 @@ const routes = [
         meta: { title: '简历管理', group: '求职材料' },
       },
       {
+        path: 'resumes/:id/analysis',
+        name: 'resume-analysis',
+        component: () => import('@/views/ResumeAnalysisView.vue'),
+        meta: { title: '简历 AI 分析', group: '求职材料' },
+      },
+      {
         path: 'profile',
         name: 'profile',
         component: () => import('@/views/ProfileView.vue'),
