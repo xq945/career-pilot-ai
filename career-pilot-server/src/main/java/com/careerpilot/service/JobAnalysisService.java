@@ -161,8 +161,13 @@ public class JobAnalysisService {
 
     // ---------------------------------------------------------------- 查询与工具
 
-    /** 最新成功分析（复用判断、过期判定与 5.7 共用同一查询路径） */
-    private JobAnalysis findLatestSuccess(Long jobId) {
+    /**
+     * 最新成功分析（复用判断、过期判定与 5.7 共用同一查询路径）。
+     *
+     * public：M6 创建匹配（读取匹配依据与过期拦截）与 M8 的 Agent 工具复用同一查询，
+     * 避免各调用方自行拼 Wrapper 造成口径漂移。
+     */
+    public JobAnalysis findLatestSuccess(Long jobId) {
         return jobAnalysisMapper.selectOne(Wrappers.<JobAnalysis>lambdaQuery()
                 .eq(JobAnalysis::getJobId, jobId)
                 .eq(JobAnalysis::getStatus, JobAnalysis.STATUS_SUCCESS)

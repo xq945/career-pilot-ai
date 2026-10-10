@@ -133,8 +133,13 @@ public class ResumeAnalysisService {
 
     // ---------------------------------------------------------------- 查询与工具
 
-    /** 最新成功分析（复用判断与 4.6 共用同一查询路径） */
-    private ResumeAnalysis findLatestSuccess(Long resumeId) {
+    /**
+     * 最新成功分析（复用判断与 4.6 共用同一查询路径）。
+     *
+     * public：M6 创建匹配与 M8 的 Agent 工具读取分析依据时复用同一查询，
+     * 避免各调用方自行拼 Wrapper 造成口径漂移。
+     */
+    public ResumeAnalysis findLatestSuccess(Long resumeId) {
         return resumeAnalysisMapper.selectOne(Wrappers.<ResumeAnalysis>lambdaQuery()
                 .eq(ResumeAnalysis::getResumeId, resumeId)
                 .eq(ResumeAnalysis::getStatus, ResumeAnalysis.STATUS_SUCCESS)
