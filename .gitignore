@@ -13,9 +13,12 @@ application-*.local.yml
 !.env.development
 
 # ========== 文件上传目录（系统架构设计 §7.1）==========
-# 存储根目录本应位于项目运行目录之外，此处兜底防止误提交
-uploads/
-storage/
+# 存储根目录本应位于项目运行目录之外，此处兜底防止误提交。
+# **必须带前导斜杠限定在仓库根**：不加斜杠的 `storage/` 会匹配任意层级，
+# 连源码目录 career-pilot-server/src/main/java/com/careerpilot/service/storage/
+# 一起忽略掉——M2 建立的存储设施曾因此从未被提交（克隆后无法编译）。
+/uploads/
+/storage/
 
 # ========== 设计文档（仅本地维护，不入库）==========
 # docs/ 下的设计、接口与审查文档是个人毕设材料，不随公开仓库分发。
