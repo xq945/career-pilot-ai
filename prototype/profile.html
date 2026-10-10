@@ -14,10 +14,43 @@
         POST   /api/auth/logout    退出登录（服务端不使 Token 失效，由前端清除 localStorage 完成）
   说明：用户名与邮箱为唯一标识，第一版不提供修改入口；
         第一版未提供「修改密码」接口，因此本页不设计该功能。
-        头像交互规格见《前端原型设计》§5.13（V1.4 定死：即时生效、移除无二次确认）。
+        头像交互规格见《前端原型设计》§5.13（V1.5）。
+        基本资料卡片默认只读展示，点右上角修改图标进入编辑态：昵称可输入、头像操作按钮与
+        「取消 / 保存修改」出现。头像操作在编辑态仍即时生效（取消不撤销头像，仅昵称可撤销）。
+        页面描述、字段提示等辅助小字不再展示（V1.5）。
 -->
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="stylesheet" href="assets/prototype.css">
+<style>
+  /* ==== 页内样式：基本资料「展示态 ↔ 编辑态」（原型演示专用；Vue 实现用组件状态） ==== */
+
+  /* 卡片头右上角的修改图标按钮 */
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    color: var(--ink-500);
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .icon-btn:hover { color: var(--brand-600); border-color: var(--brand-200); background: var(--brand-50); }
+
+  /* 字段的只读展示值（与输入框同高，保证两种状态间不跳动） */
+  .field__static { display: flex; align-items: center; height: 36px; font-size: 13px; color: var(--ink-900); }
+
+  /* 显隐切换：展示态隐藏编辑控件与卡片脚；编辑态隐藏只读值 */
+  #basic-card .edit-only { display: none; }
+  #basic-card .card__foot { display: none; }
+  #basic-card.is-editing .edit-only { display: block; }
+  #basic-card.is-editing .card__foot { display: flex; }
+  #basic-card.is-editing .field__static { display: none; }
+</style>
 </head>
 <body data-page="profile" data-crumb="账号 / <b>个人中心</b>">
 <div class="shell">
@@ -29,55 +62,58 @@
       <div class="content__inner" style="max-width:820px">
 
         <div class="page-head">
-          <div class="page-head__text">
-            <h1>个人中心</h1>
-            <p class="page-head__desc">管理账号资料与登录状态</p>
-          </div>
+          <div class="page-head__text"><h1>个人中心</h1></div>
         </div>
 
-        <!-- ===== 资料 ===== -->
-        <div class="card">
+        <!-- ===== 基本资料（展示态 / 编辑态） ===== -->
+        <div class="card" id="basic-card">
           <div class="card__head">
             <h2>基本资料</h2>
-            <span class="card__sub">昵称与头像会显示在页面右上角</span>
+            <button class="icon-btn" type="button" data-edit-toggle="#basic-card" title="修改资料" aria-label="修改资料">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M14.5 5.5l3 3"/>
+              </svg>
+            </button>
           </div>
           <div class="card__body">
 
             <div class="row mb-20" style="gap:18px">
               <div style="width:64px;height:64px;border-radius:50%;background:var(--brand-600);color:#fff;
                           display:flex;align-items:center;justify-content:center;font-size:24px;flex:0 0 64px">求</div>
-              <div>
+              <!-- 头像操作仅在编辑态出现；上传/移除仍即时生效 -->
+              <div class="edit-only">
                 <div class="row mb-8">
                   <button class="btn btn--sm">更换头像</button>
                   <button class="btn btn--sm btn--ghost">移除</button>
                 </div>
-                <div class="small muted">支持 JPG / PNG，建议 200×200 像素以内</div>
+                <div class="small muted">支持 JPG / PNG，建议 200×200 像素以内；不超过 2 MB</div>
               </div>
             </div>
 
             <div class="grid grid--2">
               <div class="field">
                 <label class="field__label">昵称</label>
-                <input class="input" type="text" value="求职者">
-                <div class="field__hint">可修改，不超过 50 个字符</div>
+                <div class="field__static">求职者</div>
+                <input class="input edit-only" type="text" value="求职者" maxlength="50">
               </div>
 
               <div class="field">
                 <label class="field__label">用户名</label>
-                <input class="input" type="text" value="student01" disabled style="background:#f8fafc;color:var(--ink-400)">
-                <div class="field__hint">登录标识，创建后不可修改</div>
+                <div class="field__static">student01</div>
+                <input class="input edit-only" type="text" value="student01" disabled style="background:#f8fafc;color:var(--ink-400)">
               </div>
 
               <div class="field">
                 <label class="field__label">邮箱</label>
-                <input class="input" type="email" value="student01@example.com" disabled style="background:#f8fafc;color:var(--ink-400)">
-                <div class="field__hint">登录标识，创建后不可修改</div>
+                <div class="field__static">student01@example.com</div>
+                <input class="input edit-only" type="email" value="student01@example.com" disabled style="background:#f8fafc;color:var(--ink-400)">
               </div>
 
               <div class="field">
                 <label class="field__label">用户 ID</label>
-                <input class="input" type="text" value="1" disabled style="background:#f8fafc;color:var(--ink-400)">
-                <div class="field__hint">系统内部标识</div>
+                <div class="field__static">1</div>
+                <input class="input edit-only" type="text" value="1" disabled style="background:#f8fafc;color:var(--ink-400)">
               </div>
             </div>
           </div>
@@ -85,19 +121,6 @@
             <span class="spacer"></span>
             <button class="btn">取消</button>
             <button class="btn btn--primary">保存修改</button>
-          </div>
-        </div>
-
-        <!-- ===== 数据与隐私 ===== -->
-        <div class="card">
-          <div class="card__head"><h2>数据与隐私</h2></div>
-          <div class="card__body">
-            <ul class="bullets">
-              <li>简历文本仅保存在服务端，用于 AI 分析，<strong>不会回传到浏览器</strong>，平台不提供简历原文的预览与下载。</li>
-              <li>删除简历后，简历文件会从服务器同步删除；由该简历产生的分析、匹配与面试记录会<strong>保留</strong>，便于追溯历史结论。</li>
-              <li>智能体对话记录与简历同属个人数据，仅本人可见。</li>
-              <li>登录凭据保存在浏览器本地，退出登录即清除；如使用公共电脑，离开前请退出登录。</li>
-            </ul>
           </div>
         </div>
 
@@ -109,6 +132,8 @@
               <div class="spacer">
                 <div class="strong">当前设备已登录</div>
                 <div class="small muted mt-8">Token 有效期 2 小时，过期后需重新登录</div>
+                <!-- 本次登录时刻与已用时长：实现时分别取自 Token 签发时间与进入后的计时 -->
+                <div class="small muted mt-8">本次登录：2026-10-10 10:30　·　已使用：23 分钟</div>
               </div>
               <button class="btn btn--danger">退出登录</button>
             </div>

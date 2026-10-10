@@ -172,6 +172,15 @@ document.addEventListener('click', (e) => {
   // 上下文选择芯片开关
   const chip = e.target.closest('.ctx-chip');
   if (chip) { chip.classList.toggle('is-on'); }
+
+  // 编辑态切换：点击带 data-edit-toggle（值为目标容器选择器）的按钮，
+  // 切换目标容器的 is-editing 状态，由页面内样式控制「展示态 ↔ 编辑态」的显隐。
+  // 首个使用者为个人中心「基本资料」卡片（展示态只读、编辑态可改）。
+  const editToggle = e.target.closest('[data-edit-toggle]');
+  if (editToggle) {
+    const target = document.querySelector(editToggle.dataset.editToggle);
+    if (target) { target.classList.toggle('is-editing'); }
+  }
 });
 
 document.addEventListener('DOMContentLoaded', renderShell);
