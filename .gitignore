@@ -54,6 +54,10 @@ pnpm-debug.log*
 *.swp
 *.swo
 
+# ========== 本地临时产物 ==========
+# e2e 测试文件、截图与其他本地验证产物（tools/e2e/fixtures.mjs --out 的默认输出）
+tmp/
+
 # ========== 操作系统 ==========
 .DS_Store
 Thumbs.db
