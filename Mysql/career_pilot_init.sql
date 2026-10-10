@@ -155,6 +155,10 @@ CREATE TABLE interview_session (
   question_count INT NOT NULL DEFAULT 5 COMMENT '计划题目数，创建会话时确定',
   status TINYINT NOT NULL DEFAULT 0 COMMENT '0进行中，1已完成，2已取消',
   total_score DECIMAL(5,2) DEFAULT NULL COMMENT '全部作答完成后计算',
+  overall_summary TEXT DEFAULT NULL COMMENT 'AI 总评，会话完成时写入（M7）',
+  strengths JSON DEFAULT NULL COMMENT 'AI 归纳的强项标签（M7）',
+  weaknesses JSON DEFAULT NULL COMMENT 'AI 归纳的薄弱标签（M7）',
+  recommendations JSON DEFAULT NULL COMMENT 'AI 归纳的提升建议（M7）',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   completed_at DATETIME DEFAULT NULL,
@@ -163,6 +167,13 @@ CREATE TABLE interview_session (
   CONSTRAINT fk_interview_user FOREIGN KEY (user_id) REFERENCES sys_user(id) ON DELETE RESTRICT,
   CONSTRAINT fk_interview_job FOREIGN KEY (job_id) REFERENCES job(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='面试会话';
+
+-- V1.4 增量（既有库升级执行；新建库执行上面的完整 DDL 即可）：
+-- ALTER TABLE interview_session
+--   ADD COLUMN overall_summary TEXT NULL COMMENT 'AI 总评，会话完成时写入（M7）',
+--   ADD COLUMN strengths JSON NULL COMMENT 'AI 归纳的强项标签（M7）',
+--   ADD COLUMN weaknesses JSON NULL COMMENT 'AI 归纳的薄弱标签（M7）',
+--   ADD COLUMN recommendations JSON NULL COMMENT 'AI 归纳的提升建议（M7）';
 
 -- ============================================================
 -- 8. 面试题与回答
