@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 350 132" width="350" height="132" role="img" aria-label="智能求职助手 Smart Career Assistant">
+  <title>智能求职助手 · 组合 Logo</title>
+
+  <!--
+    组合 Logo：图标在左，中文为主、英文为辅。
+    · 图标缩放到 0.85，使其高度约为文字块的 1.9 倍 —— 图标仍是视觉主体，但不压迫文字。
+    · 文字使用系统无衬线字体栈。注意：SVG 的 <text> 依赖渲染环境的字体，
+      Windows 上解析为微软雅黑，macOS 上为苹方。若需跨环境完全一致，需将文字转为路径。
+  -->
+  <defs>
+    <linearGradient id="ch-head" x1="0" y1="0" x2="0.55" y2="1">
+      <stop offset="0" stop-color="#8FCBF7"/>
+      <stop offset="1" stop-color="#78BDF5"/>
+    </linearGradient>
+    <linearGradient id="ch-body" x1="0" y1="0" x2="0.45" y2="1">
+      <stop offset="0" stop-color="#B7ABF9"/>
+      <stop offset="1" stop-color="#A99AF7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ============ 左侧：机器人图标 ============ -->
+  <g transform="translate(-10.68 10.07) scale(0.85)">
+    <g transform="translate(-1.05 -2.35)">
+
+      <!-- 头部左侧的小星 -->
+      <path d="M27 49.5Q28.6 55.4 34.5 57Q28.6 58.6 27 64.5Q25.4 58.6 19.5 57Q25.4 55.4 27 49.5Z" fill="#9DE4CC"/>
+
+      <!-- 天线顶端的星 -->
+      <path d="M66 10.5Q67.8 19.2 76.5 21Q67.8 22.8 66 31.5Q64.2 22.8 55.5 21Q64.2 19.2 66 10.5Z" fill="#9DE4CC"/>
+
+      <!-- 天线杆 -->
+      <line x1="66" y1="31" x2="66" y2="45" stroke="#A99AF7" stroke-width="3.4" stroke-linecap="round"/>
+
+      <!-- 身体 -->
+      <rect x="45" y="88" width="42" height="26" rx="13" fill="url(#ch-body)"/>
+
+      <!-- 头部 -->
+      <rect x="36" y="41" width="60" height="54" rx="19" fill="url(#ch-head)"/>
+
+      <!-- 面部 -->
+      <ellipse cx="66" cy="71" rx="23" ry="16" fill="#FFF9F0"/>
+
+      <!-- 眼睛与高光 -->
+      <circle cx="57" cy="68" r="5.4" fill="#34415E"/>
+      <circle cx="75" cy="68" r="5.4" fill="#34415E"/>
+      <circle cx="58.8" cy="66.2" r="1.7" fill="#FFF9F0"/>
+      <circle cx="76.8" cy="66.2" r="1.7" fill="#FFF9F0"/>
+
+      <!-- 微笑 -->
+      <path d="M60 77Q66 82.8 72 77" fill="none" stroke="#34415E" stroke-width="3.2" stroke-linecap="round"/>
+
+      <!-- 简历卡片 -->
+      <g transform="rotate(-10 98 109)">
+        <rect x="84" y="94" width="28" height="30" rx="4.5" fill="#FFF9F0"/>
+        <line x1="90" y1="103" x2="106" y2="103" stroke="#CBD8EA" stroke-width="2.1" stroke-linecap="round"/>
+        <line x1="90" y1="110" x2="102" y2="110" stroke="#CBD8EA" stroke-width="2.1" stroke-linecap="round"/>
+        <path d="M90 117L93 120L100 112" fill="none" stroke="#9DE4CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+
+    </g>
+  </g>
+
+  <!-- ============ 右侧：文字 ============ -->
+  <text x="118" y="65"
+        font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB','Source Han Sans SC',sans-serif"
+        font-size="34" font-weight="700" fill="#34415E" letter-spacing="0.5">智能求职助手</text>
+
+  <text x="119" y="92"
+        font-family="'PingFang SC','Microsoft YaHei','Hiragino Sans GB','Source Han Sans SC',sans-serif"
+        font-size="16.5" font-weight="400" fill="#7E8AAD" letter-spacing="0.7">Smart Career Assistant</text>
+
+</svg>

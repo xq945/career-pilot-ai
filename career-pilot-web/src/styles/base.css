@@ -1,0 +1,76 @@
+/* ============================================================================
+   全局基础样式 —— 来源：《前端原型设计》§2.2 排版、§2.3 间距与栅格
+   仅保留全局必需的重置与排版；组件级样式写在各自 <style scoped> 内。
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--el-font-family);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-700);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 页面标题层级（§2.2）：22 / 17 / 15，正文 14，次级 13，辅助 12 */
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  color: var(--ink-900);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+h1 {
+  font-size: 22px;
+}
+
+h2 {
+  font-size: 17px;
+}
+
+h3 {
+  font-size: 15px;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--brand-600);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--brand-700);
+}
+
+/* 滚动条：与原型一致，8px 圆角滑块 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}

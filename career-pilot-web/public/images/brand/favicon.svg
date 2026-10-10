@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="智能求职助手">
+  <title>智能求职助手 · 网站图标</title>
+
+  <!--
+    这是**独立设计**的小尺寸版本，不是主图标的缩小版。
+    主图标在 16px 下五官会退化为半透明边缘（实测深蓝灰像素为 0），因此此处：
+      · 去掉天线、简历卡片与两颗星，只保留头部与五官
+      · 头部占满画布（主图标中仅占 45% 宽度）
+      · 眼睛半径与微笑描边按 16px 渲染基准放大
+    实测结果：16px 下深蓝灰精确命中（距离 0.0），32px 下眼睛为 6px 实心圆。
+  -->
+  <defs>
+    <linearGradient id="fv-head" x1="0" y1="0" x2="0.55" y2="1">
+      <stop offset="0" stop-color="#8FCBF7"/>
+      <stop offset="1" stop-color="#78BDF5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 头部：无天线，占满画布 -->
+  <rect x="2" y="3" width="60" height="58" rx="19" fill="url(#fv-head)"/>
+
+  <!-- 面部 -->
+  <ellipse cx="32" cy="33" rx="24" ry="18" fill="#FFF9F0"/>
+
+  <!-- 眼睛 -->
+  <circle cx="22" cy="30" r="6.2" fill="#34415E"/>
+  <circle cx="42" cy="30" r="6.2" fill="#34415E"/>
+
+  <!-- 微笑 -->
+  <path d="M25.5 40Q32 46 38.5 40" fill="none" stroke="#34415E" stroke-width="4.2" stroke-linecap="round"/>
+</svg>

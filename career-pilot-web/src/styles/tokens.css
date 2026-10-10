@@ -1,0 +1,118 @@
+/* ============================================================================
+   设计令牌 —— 来源：《前端原型设计》§2 视觉规范
+   原型中的令牌定义于 prototype/assets/prototype.css 的 :root，此处同名迁移，
+   并额外覆盖 Element Plus 主题变量，使组件库与品牌视觉一致（§2.4 组件对照）。
+
+   注意：Element Plus 的 --el-color-*-light-N 是其构建期用 SCSS 混色算出的**静态值**，
+   不会随 --el-color-primary 自动重算，因此必须逐个显式覆盖，只改主色会导致
+   悬停/禁用态的色调与主色脱节。
+   ========================================================================== */
+
+:root {
+  /* ---- 主色（蓝） ---------------------------------------------------- */
+  --brand-50: #eff6ff; /* 选中态背景、浅色标签底 */
+  --brand-100: #dbeafe; /* 用户气泡背景、浅色描边 */
+  --brand-200: #bfdbfe; /* 悬停描边 */
+  --brand-500: #3b82f6; /* 输入框聚焦边框 */
+  --brand-600: #2563eb; /* 主色：主按钮、链接、激活态、进度条 */
+  --brand-700: #1d4ed8; /* 主按钮悬停、强调文字 */
+
+  /* ---- 中性色 --------------------------------------------------------- */
+  --ink-900: #0f172a; /* 标题、关键数值 */
+  --ink-700: #334155; /* 正文 */
+  --ink-500: #64748b; /* 次级文字 */
+  --ink-400: #94a3b8; /* 辅助文字、占位符 */
+  --line: #e2e8f0; /* 分割线、卡片描边 */
+  --bg: #f8fafc; /* 页面背景 */
+  --surface: #ffffff; /* 卡片背景 */
+
+  /* ---- 语义色 --------------------------------------------------------- */
+  --ok: #059669;
+  --ok-bg: #ecfdf5;
+  --ok-line: #a7f3d0;
+  --warn: #d97706;
+  --warn-bg: #fffbeb;
+  --warn-line: #fde68a;
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+  --danger-line: #fecaca;
+  --info: #0284c7;
+  --info-bg: #f0f9ff;
+  --info-line: #bae6fd;
+
+  /* ---- 形状与阴影 ------------------------------------------------------ */
+  --radius-sm: 6px; /* 控件 */
+  --radius: 10px; /* 卡片 */
+  --radius-lg: 14px; /* 弹窗 */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+
+  /* ---- 布局 ------------------------------------------------------------ */
+  --sidebar-w: 232px;
+  --topbar-h: 56px;
+  --content-max: 1160px;
+
+  /* ---- Element Plus 主题覆盖 ------------------------------------------- */
+  --el-color-primary: var(--brand-600);
+  --el-color-primary-light-3: #6692f1;
+  --el-color-primary-light-5: #92b1f5;
+  --el-color-primary-light-7: #bed0f9;
+  --el-color-primary-light-8: #d3e0fb;
+  --el-color-primary-light-9: #e9effd;
+  --el-color-primary-dark-2: #1e4fbc;
+
+  --el-color-success: var(--ok);
+  --el-color-success-light-3: #50b696;
+  --el-color-success-light-5: #82cbb4;
+  --el-color-success-light-7: #b4e0d2;
+  --el-color-success-light-8: #cdeae1;
+  --el-color-success-light-9: #e6f5f0;
+  --el-color-success-dark-2: #047854;
+
+  --el-color-warning: var(--warn);
+  --el-color-warning-light-3: #e4a051;
+  --el-color-warning-light-5: #ecbb83;
+  --el-color-warning-light-7: #f4d6b4;
+  --el-color-warning-light-8: #f7e4cd;
+  --el-color-warning-light-9: #fbf1e6;
+  --el-color-warning-dark-2: #ae5f05;
+
+  --el-color-danger: var(--danger);
+  --el-color-danger-light-3: #e76767;
+  --el-color-danger-light-5: #ee9393;
+  --el-color-danger-light-7: #f5bebe;
+  --el-color-danger-light-8: #f8d4d4;
+  --el-color-danger-light-9: #fce9e9;
+  --el-color-danger-dark-2: #b01e1e;
+
+  --el-color-error: var(--danger);
+  --el-color-error-light-3: #e76767;
+  --el-color-error-light-5: #ee9393;
+  --el-color-error-light-7: #f5bebe;
+  --el-color-error-light-8: #f8d4d4;
+  --el-color-error-light-9: #fce9e9;
+  --el-color-error-dark-2: #b01e1e;
+
+  --el-color-info: var(--info);
+  --el-color-info-light-3: #4ea9d8;
+  --el-color-info-light-5: #81c2e3;
+  --el-color-info-light-7: #b3daee;
+  --el-color-info-light-8: #cce6f4;
+  --el-color-info-light-9: #e6f3f9;
+  --el-color-info-dark-2: #026a9f;
+
+  --el-text-color-primary: var(--ink-900);
+  --el-text-color-regular: var(--ink-700);
+  --el-text-color-secondary: var(--ink-500);
+  --el-text-color-placeholder: var(--ink-400);
+  --el-border-color: var(--line);
+  --el-border-color-light: var(--line);
+  --el-border-color-lighter: var(--line);
+  --el-bg-color-page: var(--bg);
+  --el-fill-color-blank: var(--surface);
+
+  --el-border-radius-base: var(--radius-sm);
+  --el-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}

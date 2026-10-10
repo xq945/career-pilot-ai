@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180" role="img" aria-label="智能求职助手">
+  <title>智能求职助手 · Apple Touch Icon</title>
+
+  <!--
+    iOS 主屏幕图标。
+    · 背景铺满、不自绘圆角 —— iOS 会自行施加圆角遮罩，自绘圆角会形成「方中带方」。
+    · 背景取薰衣草紫：若沿用头部蓝，蓝色头部会与背景糊成一片，失去层次。
+    · 图形较 favicon 略小并留出边距，避免被 iOS 的圆角裁到。
+  -->
+  <defs>
+    <linearGradient id="at-bg" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#B7ABF9"/>
+      <stop offset="1" stop-color="#9A8BF5"/>
+    </linearGradient>
+    <linearGradient id="at-head" x1="0" y1="0" x2="0.55" y2="1">
+      <stop offset="0" stop-color="#8FCBF7"/>
+      <stop offset="1" stop-color="#78BDF5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景铺满 -->
+  <rect width="180" height="180" fill="url(#at-bg)"/>
+
+  <!-- 头部 -->
+  <rect x="25" y="34" width="130" height="112" rx="40" fill="url(#at-head)"/>
+
+  <!-- 面部 -->
+  <ellipse cx="90" cy="100" rx="50" ry="35" fill="#FFF9F0"/>
+
+  <!-- 眼睛（占比与 favicon 保持一致：直径约为头宽的 21%） -->
+  <circle cx="68" cy="92" r="13.5" fill="#34415E"/>
+  <circle cx="112" cy="92" r="13.5" fill="#34415E"/>
+
+  <!-- 微笑 -->
+  <path d="M76 112Q90 124 104 112" fill="none" stroke="#34415E" stroke-width="9" stroke-linecap="round"/>
+</svg>
