@@ -25,6 +25,8 @@
 | `analysis-flow.mjs` | 简历 AI 分析用例（入口跳转与确认、AiWaiting 等待态、结果渲染、**复用路径秒回且版本不变**、未分析空态、错误态）；**消耗真实模型 token** |
 | `resume-file-flow.mjs` | 简历原文件预览 / 下载用例（名称点击预览、下载图标、取回内容与上传原文一致、删除后 404） |
 | `job-flow.mjs` | 岗位模块用例（新建/编辑弹窗与校验、**三态标签**、改描述后立即「分析已过期」、过期重分析生成新版本、复用路径、删除）；**消耗 2 次真实模型调用** |
+| `match-flow.mjs` | 匹配模块用例（新建弹窗的就地拦截、报告页分数环/维度条/三栏明细与免责说明、重复匹配、过期拦截、删除后可见性）；**消耗真实模型调用** |
+| `interview-flow.mjs` | 面试模块用例（创建弹窗校验与出题等待态、**进度分母取实际题数**、逐题作答与评价渲染、重答确认弹窗与**总分即时重算**、报告页总分/总评/分类/查看回答、列表进行中与已完成两态）；**消耗 6 次真实模型调用（出题 1 + 评价 3 + 总评 2）**，默认浏览器端口 9223（便于与 match/job 并行） |
 
 ## 用法
 
@@ -37,6 +39,8 @@ node tools/e2e/resume-flow.mjs
 node tools/e2e/analysis-flow.mjs      # 消耗真实模型 token
 node tools/e2e/resume-file-flow.mjs
 node tools/e2e/job-flow.mjs           # 消耗 2 次真实模型调用
+node tools/e2e/match-flow.mjs         # 消耗真实模型调用
+node tools/e2e/interview-flow.mjs     # 消耗 6 次真实模型调用（端口 9223）
 
 # 换地址
 node tools/e2e/auth-flow.mjs --base http://localhost:5173 --api http://localhost:8080/api
