@@ -20,6 +20,8 @@
 | `cdp.mjs` | 极简 CDP 客户端：启动浏览器、连接、`evaluate` / `goto` / `fill` / `click` / `waitFor` / 截图，以及断言汇总 |
 | `auth-flow.mjs` | 认证闭环用例（注册、登录、守卫、刷新恢复、令牌失效、退出、404） |
 | `profile-flow.mjs` | 个人中心用例（路由导航、昵称修改与即时同步、头像上传/替换/移除、双侧校验、页内退出） |
+| `fixtures.mjs` | 简历测试文件的**动态构造器**（DOCX/PDF/HTML/TXT，含中文；全在内存按格式规范拼装，零二进制入库）。也可单独运行 `node tools/e2e/fixtures.mjs --out ./tmp` 生成一组文件供 curl 验收使用 |
+| `resume-flow.mjs` | 简历管理用例（上传 DOCX/HTML/TXT/PDF、前端即时校验、服务端 415/400/413、删除三条后果与幂等、分页显隐与翻页） |
 
 ## 用法
 
@@ -28,6 +30,7 @@
 ```bash
 node tools/e2e/auth-flow.mjs
 node tools/e2e/profile-flow.mjs
+node tools/e2e/resume-flow.mjs
 
 # 换地址
 node tools/e2e/auth-flow.mjs --base http://localhost:5173 --api http://localhost:8080/api
@@ -38,8 +41,12 @@ node tools/e2e/auth-flow.mjs --shots ./shots
 
 全部断言通过时退出码为 0，有失败项时为 1，可直接接进流水线。
 
-`profile-flow.mjs` 的头像上传用「浏览器内 canvas 生成真实 PNG → `DataTransfer` 注入
-`input[type=file]`」的方式，无需携带二进制测试文件；测试头像由「移除头像」接口在用例内清理。
+测试文件均**动态构造、零二进制入库**：
+
+- `profile-flow.mjs` 的头像在浏览器内用 canvas 生成真实 PNG；
+- `resume-flow.mjs` 的简历经 `fixtures.mjs` 在内存中按格式规范拼装（DOCX 为手写
+  ZIP 容器、PDF 为最小合法结构），base64 注入 `input[type=file]`；
+- 测试数据由脚本结束时打印的清理 SQL 手工清除（后端无删除用户接口）。
 
 ## 边界
 
@@ -60,4 +67,11 @@ node tools/e2e/auth-flow.mjs --shots ./shots
   依赖 `trigger: 'blur'` 的表单规则不会执行。要验证校验拦截，走真实用户路径
   （点提交按钮触发全量校验）而不是模拟 blur；`maxlength` 也只约束用户输入，
   拦不住脚本赋值（因此不能靠它来断言「输入被截断」）。
+- **路由跳转的 URL 更新早于组件渲染**：`location.pathname` 匹配后，异步加载的
+  页面组件可能还没挂载（首次访问还叠加 Vite 按需编译），此时 DOM 仍是上一页。
+  跳转后要再等一个页面内元素出现，别直接断言内容。
+- **el-dialog 用 v-show 控制显隐、DOM 常驻**：不能用 `querySelector` 是否存在判断
+  「弹窗是否打开/关闭」，要用可见性（如 `offsetParent !== null`）。
+- **页面内 fetch 与页面同源才有正确的 Origin**：跨域请求的 CORS 校验依赖 Origin，
+  在 `about:blank` 上直接 evaluate fetch 会被拒；先 `goto` 到前端页面再发请求。
 - 每个用例**失败不中断**：`createChecker()` 会跑完全部断言再汇总，一次拿到所有问题。

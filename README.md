@@ -128,7 +128,7 @@ npm run dev
 | 模型名 | `deepseek-flash` | `spring.ai.deepseek.chat.options.model` |
 | 文件存储实现 | `local`（本地磁盘） | `app.file.storage-type`（`oss` 切换阿里云 OSS，见配置模板） |
 | 本地存储根目录 | `${user.home}/career-pilot-uploads` | `app.file.storage-root`（须位于项目运行目录之外） |
-| 单文件上传上限 | 10 MB（容器层） | `spring.servlet.multipart.max-file-size`（头像另有 2 MB 业务限制） |
+| 单文件上传上限 | 10 MB（简历；容器层与业务层双重校验） | `spring.servlet.multipart.max-file-size`（头像另有 2 MB 业务限制；配套的 `max-request-size` 与 `server.tomcat.max-swallow-size` 为 50 MB，**调大文件上限时需同步调整**，原因见 `application.yml` 注释） |
 
 ## 文档
 
