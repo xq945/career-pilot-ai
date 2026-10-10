@@ -19,6 +19,7 @@
 |---|---|
 | `cdp.mjs` | 极简 CDP 客户端：启动浏览器、连接、`evaluate` / `goto` / `fill` / `click` / `waitFor` / 截图，以及断言汇总 |
 | `auth-flow.mjs` | 认证闭环用例（注册、登录、守卫、刷新恢复、令牌失效、退出、404） |
+| `profile-flow.mjs` | 个人中心用例（路由导航、昵称修改与即时同步、头像上传/替换/移除、双侧校验、页内退出） |
 
 ## 用法
 
@@ -26,6 +27,7 @@
 
 ```bash
 node tools/e2e/auth-flow.mjs
+node tools/e2e/profile-flow.mjs
 
 # 换地址
 node tools/e2e/auth-flow.mjs --base http://localhost:5173 --api http://localhost:8080/api
@@ -35,6 +37,9 @@ node tools/e2e/auth-flow.mjs --shots ./shots
 ```
 
 全部断言通过时退出码为 0，有失败项时为 1，可直接接进流水线。
+
+`profile-flow.mjs` 的头像上传用「浏览器内 canvas 生成真实 PNG → `DataTransfer` 注入
+`input[type=file]`」的方式，无需携带二进制测试文件；测试头像由「移除头像」接口在用例内清理。
 
 ## 边界
 
@@ -51,4 +56,8 @@ node tools/e2e/auth-flow.mjs --shots ./shots
   后续会在一个空 DOM 上操作、报出难以理解的错误。开跑前先 `localStorage.clear()`。
 - **Vue Router 不编码 query 中的 `/`**：实际是 `?redirect=/dashboard`，不是 `%2F`；
   断言 URL 前先 `decodeURIComponent`。
+- **脚本赋值不会触发 blur 校验**：`fill()` 只设置 value 并派发事件、不获得焦点，
+  依赖 `trigger: 'blur'` 的表单规则不会执行。要验证校验拦截，走真实用户路径
+  （点提交按钮触发全量校验）而不是模拟 blur；`maxlength` 也只约束用户输入，
+  拦不住脚本赋值（因此不能靠它来断言「输入被截断」）。
 - 每个用例**失败不中断**：`createChecker()` 会跑完全部断言再汇总，一次拿到所有问题。

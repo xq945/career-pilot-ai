@@ -112,6 +112,7 @@ npm run dev
 | `spring.datasource.password` | `DB_PASSWORD` | MySQL 连接密码 |
 | `spring.ai.deepseek.api-key` | `DEEPSEEK_API_KEY` | 大模型调用凭据 |
 | `app.jwt.secret` | — | JWT 签名密钥（HS256，不少于 32 字节） |
+| `app.file.oss.access-key-id` / `access-key-secret` | `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 阿里云 OSS 凭据（仅 `app.file.storage-type=oss` 时使用） |
 
 `application.yml` 中只保留非敏感默认值。
 
@@ -125,6 +126,9 @@ npm run dev
 | 允许的跨域来源 | `http://localhost:5173` | `app.cors.allowed-origins` |
 | JWT 有效期 | 7200 秒 | `app.jwt.expiration-seconds` |
 | 模型名 | `deepseek-flash` | `spring.ai.deepseek.chat.options.model` |
+| 文件存储实现 | `local`（本地磁盘） | `app.file.storage-type`（`oss` 切换阿里云 OSS，见配置模板） |
+| 本地存储根目录 | `${user.home}/career-pilot-uploads` | `app.file.storage-root`（须位于项目运行目录之外） |
+| 单文件上传上限 | 10 MB（容器层） | `spring.servlet.multipart.max-file-size`（头像另有 2 MB 业务限制） |
 
 ## 文档
 

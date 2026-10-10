@@ -7,11 +7,14 @@
 <!--
   页面：个人中心
   路由：/profile
-  接口：GET /api/user/profile   读取当前用户资料
-        PUT /api/user/profile   更新昵称与头像（仅这两个字段可改）
-        POST /api/auth/logout   退出登录（服务端不使 Token 失效，由前端清除 localStorage 完成）
+  接口：GET    /api/user/profile   读取当前用户资料
+        PUT    /api/user/profile   更新昵称（仅昵称可改，必填且 ≤ 50 字符）
+        POST   /api/user/avatar    上传头像（JPG/PNG、≤ 2 MB，上传即替换并删除旧文件）
+        DELETE /api/user/avatar    移除头像（幂等）
+        POST   /api/auth/logout    退出登录（服务端不使 Token 失效，由前端清除 localStorage 完成）
   说明：用户名与邮箱为唯一标识，第一版不提供修改入口；
         第一版未提供「修改密码」接口，因此本页不设计该功能。
+        头像交互规格见《前端原型设计》§5.13（V1.4 定死：即时生效、移除无二次确认）。
 -->
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="stylesheet" href="assets/prototype.css">
