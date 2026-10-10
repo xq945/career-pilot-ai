@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>品牌资源预览 · 智能求职助手</title>
+<link rel="icon" type="image/svg+xml" href="../../career-pilot-web/public/images/brand/favicon.svg">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f4f6fa; color: #2b3550; font-size: 14px; line-height: 1.7;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 36px 24px 72px; }
+  h1 { font-size: 25px; margin: 0 0 8px; color: #1e2a45; }
+  h2 { font-size: 16px; margin: 0 0 16px; color: #1e2a45; }
+  .lede { color: #6b7a99; max-width: 640px; margin: 0 0 32px; }
+  .label { font-size: 12px; color: #8f9dbb; margin-bottom: 10px; }
+
+  .card { background: #fff; border: 1px solid #e4e9f2; border-radius: 14px; padding: 24px; box-shadow: 0 1px 3px rgba(30,42,69,.05); }
+  .card + .card { margin-top: 20px; }
+  .card--dark { background: #1d2540; border-color: #2b3557; }
+  .card--dark h2 { color: #eef2fb; }
+  .card--dark .label { color: #7c8ab0; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 820px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+
+  .hero { display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .hero img { width: 230px; height: 230px; display: block; }
+  .hero--wide img { width: 100%; max-width: 330px; height: auto; }
+  .hero--dark img { filter: drop-shadow(0 4px 14px rgba(0,0,0,.35)); }
+
+  .ladder { display: flex; align-items: flex-end; gap: 32px; flex-wrap: wrap; padding: 10px 0 4px; }
+  .ladder figure { margin: 0; text-align: center; }
+  .ladder img { display: block; margin: 0 auto 10px; }
+  .ladder figcaption { font-size: 11px; color: #8f9dbb; }
+
+  .tabstrip {
+    background: #dee4ee; border-radius: 10px 10px 0 0; padding: 8px 8px 0; display: flex; gap: 4px;
+    border: 1px solid #d3dae6; border-bottom: none;
+  }
+  .tab { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 8px 8px 0 0;
+         font-size: 12.5px; color: #5a6785; max-width: 280px; background: #e8ecf4; }
+  .tab.is-active { background: #fff; color: #2b3550; }
+  .tab img { width: 16px; height: 16px; flex: 0 0 16px; display: block; }
+  .tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tabbar-page { background: #fff; border: 1px solid #d3dae6; border-top: none; border-radius: 0 0 10px 10px;
+                 padding: 18px 20px; color: #98a4bd; font-size: 12.5px; }
+
+  .palette { display: flex; gap: 14px; flex-wrap: wrap; }
+  .sw { text-align: center; font-size: 11px; color: #8f9dbb; }
+  .sw i { display: block; width: 78px; height: 52px; border-radius: 10px; border: 1px solid #e4e9f2; margin-bottom: 7px; }
+  .sw b { display: block; color: #4a5674; font-weight: 600; font-size: 11.5px; }
+
+  ul.pts { margin: 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 11px; }
+  ul.pts li { display: flex; gap: 10px; }
+  ul.pts li::before { content: ""; flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: #78BDF5; margin-top: 9px; }
+
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+         background: #eef2f9; border: 1px solid #dde4f0; border-radius: 4px; padding: 1px 6px; color: #4a5674; }
+  .note { border-left: 3px solid #A99AF7; background: #f6f4ff; padding: 12px 16px; border-radius: 0 8px 8px 0; font-size: 13px; color: #5b4a9e; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 500; color: #8f9dbb; padding: 8px 12px; border-bottom: 1px solid #e4e9f2; }
+  td { padding: 10px 12px; border-bottom: 1px solid #eef1f7; }
+  tr:last-child td { border-bottom: none; }
+  td.ok { color: #059669; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>品牌资源预览</h1>
+  <p class="lede">
+    智能求职助手 · Smart Career Assistant。所有图形为手写 SVG 矢量，
+    下方各尺寸均为无头浏览器<strong>真实光栅化</strong>的结果，与标签页中看到的完全一致。
+  </p>
+
+  <!-- 主图标 + 组合 Logo -->
+  <div class="grid2">
+    <div class="card">
+      <div class="label">主图标（浅色背景）</div>
+      <div class="hero"><img src="../../career-pilot-web/public/images/brand/logo.svg" alt="主图标"></div>
+    </div>
+    <div class="card card--dark">
+      <div class="label">主图标（深色背景）</div>
+      <div class="hero hero--dark"><img src="../../career-pilot-web/public/images/brand/logo.svg" alt="主图标"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <h2>组合 Logo</h2>
+    <p class="label">中文为主、英文为辅，图标在左。文字使用系统无衬线字体栈。</p>
+    <div class="hero hero--wide"><img src="../../career-pilot-web/public/images/brand/logo-horizontal.svg" alt="组合 Logo"></div>
+  </div>
+
+  <!-- 尺寸阶梯 -->
+  <div class="card" style="margin-top:20px">
+    <h2>尺寸阶梯</h2>
+    <p class="label">
+      左一为主图标，其余为 <strong>favicon 专用版本</strong>的真实渲染结果。
+      主图标在 16px 下五官会消失，故小尺寸使用独立设计的简化版。
+    </p>
+    <div class="ladder">
+      <figure><img src="../../career-pilot-web/public/images/brand/logo.svg" width="96" height="96" alt="主图标 96px"><figcaption>主图标 96px</figcaption></figure>
+      <figure><img src="../../career-pilot-web/public/images/brand/favicon-32x32.png" width="64" height="64" alt="64px"><figcaption>64px（从矢量缩放）</figcaption></figure>
+      <figure><img src="../../career-pilot-web/public/images/brand/favicon-32x32.png" width="48" height="48" alt="48px"><figcaption>48px</figcaption></figure>
+      <figure><img src="../../career-pilot-web/public/images/brand/favicon-32x32.png" width="32" height="32" alt="32px"><figcaption>32px（原尺寸）</figcaption></figure>
+      <figure><img src="../../career-pilot-web/public/images/brand/favicon.ico" width="16" height="16" alt="16px"><figcaption>16px（取自 ICO）</figcaption></figure>
+    </div>
+  </div>
+
+  <!-- 标签页 -->
+  <div class="card" style="margin-top:20px">
+    <h2>浏览器标签页中的实际效果</h2>
+    <div class="tabstrip">
+      <div class="tab is-active">
+        <img src="../../career-pilot-web/public/images/brand/favicon.svg" alt="">
+        <span>仪表盘 · 智能求职辅助平台</span>
+      </div>
+      <div class="tab">
+        <img src="../../career-pilot-web/public/images/brand/favicon.svg" alt="">
+        <span>简历管理 · 智能求职辅助平台</span>
+      </div>
+    </div>
+    <div class="tabbar-page">页面内容区域</div>
+  </div>
+
+  <!-- 配色 -->
+  <div class="card" style="margin-top:20px">
+    <h2>配色落位</h2>
+    <div class="palette">
+      <div class="sw"><i style="background:#78BDF5"></i><b>柔和天空蓝</b>#78BDF5<br>头部</div>
+      <div class="sw"><i style="background:#A99AF7"></i><b>薰衣草紫</b>#A99AF7<br>身体 · 天线</div>
+      <div class="sw"><i style="background:#FFF9F0"></i><b>奶油白</b>#FFF9F0<br>面部 · 卡片</div>
+      <div class="sw"><i style="background:#9DE4CC"></i><b>薄荷绿</b>#9DE4CC<br>两颗星 · 勾选</div>
+      <div class="sw"><i style="background:#34415E"></i><b>深蓝灰</b>#34415E<br>眼睛 · 微笑</div>
+    </div>
+  </div>
+
+  <!-- 验证 -->
+  <div class="card" style="margin-top:20px">
+    <h2>资源验证结果</h2>
+    <table>
+      <tr><th>文件</th><th>规格</th><th>验证</th></tr>
+      <tr><td><code>logo.png</code></td><td>1024×1024 RGBA</td><td class="ok">✓ 透明像素占 73.0%</td></tr>
+      <tr><td><code>logo-horizontal.png</code></td><td>700×264 RGBA</td><td class="ok">✓ 透明像素占 81.7%</td></tr>
+      <tr><td><code>favicon.ico</code></td><td>16 / 32 / 48 三档</td><td class="ok">✓ 内嵌 PNG 尺寸与目录声明一致</td></tr>
+      <tr><td><code>favicon-32x32.png</code></td><td>32×32 RGBA</td><td class="ok">✓ 透明背景</td></tr>
+      <tr><td><code>apple-touch-icon.png</code></td><td>180×180 RGB</td><td class="ok">✓ 无 alpha，背景铺满（符合 iOS 要求）</td></tr>
+    </table>
+  </div>
+
+  <!-- 设计要点 -->
+  <div class="card" style="margin-top:20px">
+    <h2>设计要点</h2>
+    <ul class="pts">
+      <li><b>形状呼应</b>：头部（圆角方形）与简历卡片是同一种形状语言——机器人本身就是「一份站着的小简历」，不是元素的简单拼接。</li>
+      <li><b>两根星的关系</b>：天线顶端的星（大）表达 AI 灵感，头部左侧的星（小）作为呼应，一大一小不重复。</li>
+      <li><b>眼睛带高光</b>：奶油白高光让眼神有神采，是「友善」而非「呆滞」的关键。</li>
+      <li><b>薄荷绿只出现三处</b>：两颗星 + 卡片上的勾选，保持点缀色的分量。</li>
+      <li><b>favicon 独立设计</b>：去掉天线、卡片与星，头部占满画布，五官加粗——实测 16px 下深蓝灰精确命中。</li>
+    </ul>
+    <div class="note" style="margin-top:16px">
+      完整说明见 <code>docs/品牌设计.md</code>；重新生成资源的命令见 <code>tools/brand/README.md</code>。
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
