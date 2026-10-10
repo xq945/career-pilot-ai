@@ -14,6 +14,9 @@ public class ResumeView {
 
     private String name;
 
+    /** 上传时的原始文件名（含扩展名）：列表页的「下载」入口用它作为下载后的文件名 */
+    private String fileName;
+
     /** PDF / DOCX / DOC / HTML / TXT */
     private String fileType;
 
@@ -35,6 +38,14 @@ public class ResumeView {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
     }
 
     public String getFileType() {

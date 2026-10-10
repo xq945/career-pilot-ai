@@ -1,11 +1,18 @@
 package com.careerpilot.controller;
 
+import java.nio.charset.StandardCharsets;
+
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -16,6 +23,7 @@ import com.careerpilot.common.PageResult;
 import com.careerpilot.dto.ResumeAnalysisDetail;
 import com.careerpilot.dto.ResumeAnalysisView;
 import com.careerpilot.dto.ResumeDetail;
+import com.careerpilot.dto.ResumeFile;
 import com.careerpilot.dto.ResumeUploadRequest;
 import com.careerpilot.dto.ResumeUploadResponse;
 import com.careerpilot.dto.ResumeView;
@@ -92,6 +100,54 @@ public class ResumeController {
     @GetMapping("/{id}/analysis")
     public ApiResponse<ResumeAnalysisView> analysis(@PathVariable Long id) {
         return ApiResponse.success(resumeAnalysisService.getLatest(CurrentUser.requireId(), id));
+    }
+
+    /**
+     * 获取简历文件（4.7）：预览或下载**原文件**。
+     *
+     * 响应体是文件二进制——全项目唯一的非 JSON 成功响应；失败时仍是统一结构的 JSON。
+     * 原文按**私有文件**处理：经 JWT 鉴权与归属校验（失败一律 404），不经 `/uploads/**` 静态路径暴露。
+     *
+     * @param download true 时一律以附件下发；false（缺省）时可在浏览器内渲染的格式用 inline
+     */
+    @GetMapping("/{id}/file")
+    public ResponseEntity<byte[]> file(@PathVariable Long id,
+                                       @RequestParam(defaultValue = "false") boolean download) {
+        ResumeFile file = resumeService.readFile(CurrentUser.requireId(), id);
+        boolean attachment = download || !isPreviewable(file.fileType());
+        ContentDisposition disposition = ContentDisposition
+                .builder(attachment ? "attachment" : "inline")
+                .filename(file.fileName(), StandardCharsets.UTF_8)
+                .build();
+        return ResponseEntity.ok()
+                .contentType(mediaTypeOf(file.fileType()))
+                .contentLength(file.content().length)
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .body(file.content());
+    }
+
+    /** 浏览器能否内嵌渲染：PDF / TXT / HTML 可以；DOCX / DOC 无原生渲染能力（预览等价于下载） */
+    private static boolean isPreviewable(String fileType) {
+        return !("DOCX".equals(fileType) || "DOC".equals(fileType));
+    }
+
+    /**
+     * 文件类型 → 响应 Content-Type。
+     *
+     * **HTML 刻意按 text/plain 下发**：以 text/html 渲染会让上传文件中的脚本在**后端同源**下
+     * 执行（可读取 localStorage 中的 JWT），构成同源 XSS（《API接口设计》4.7）。
+     */
+    private static MediaType mediaTypeOf(String fileType) {
+        if (fileType == null) {
+            return new MediaType("text", "plain", StandardCharsets.UTF_8);
+        }
+        return switch (fileType) {
+            case "PDF" -> MediaType.APPLICATION_PDF;
+            case "DOCX" -> MediaType.parseMediaType(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            case "DOC" -> MediaType.parseMediaType("application/msword");
+            default -> new MediaType("text", "plain", StandardCharsets.UTF_8);
+        };
     }
 
 }

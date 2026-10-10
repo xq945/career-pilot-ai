@@ -22,6 +22,7 @@ import com.careerpilot.common.BusinessException;
 import com.careerpilot.common.PageQuery;
 import com.careerpilot.common.PageResult;
 import com.careerpilot.dto.ResumeDetail;
+import com.careerpilot.dto.ResumeFile;
 import com.careerpilot.dto.ResumeUploadRequest;
 import com.careerpilot.dto.ResumeUploadResponse;
 import com.careerpilot.dto.ResumeView;
@@ -201,6 +202,18 @@ public class ResumeService {
         fileStorageService.deleteQuietly(resume.getFilePath());
     }
 
+    /**
+     * 读取简历文件内容（4.7）：归属校验通过后交给存储层读出。
+     *
+     * 简历原文按**私有文件**处理——不产生公开地址（不走 publicUrl / `/uploads/**`），
+     * 由 Controller 组装响应头后经鉴权接口下发。
+     */
+    public ResumeFile readFile(Long userId, Long id) {
+        Resume resume = getOwnedResume(userId, id);
+        return new ResumeFile(fileStorageService.read(resume.getFilePath()),
+                resume.getFileName(), resume.getFileType());
+    }
+
     // ---------------------------------------------------------------- 内部方法
 
     /**
@@ -262,6 +275,7 @@ public class ResumeService {
         ResumeView view = new ResumeView();
         view.setId(resume.getId());
         view.setName(resume.getName());
+        view.setFileName(resume.getFileName());
         view.setFileType(resume.getFileType());
         view.setCreatedAt(resume.getCreatedAt());
         view.setAnalyzed(analyzed);
