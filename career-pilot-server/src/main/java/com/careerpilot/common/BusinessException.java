@@ -27,7 +27,13 @@ public class BusinessException extends RuntimeException {
         return new BusinessException(40100, 401, message);
     }
 
-    /** 403 / 40300 无权访问 */
+    /**
+     * 403 / 40300 账号状态受限（当前仅用于"登录时账号已被禁用"）。
+     *
+     * **资源级越权不要用本方法**——归属校验失败一律 404（不区分"不存在"与"无权访问"，
+     * 避免暴露资源存在性，见《API接口设计》§1/A01）；Security 层的授权失败出口同理
+     * （见 SecurityConfig 的 accessDeniedHandler）。
+     */
     public static BusinessException forbidden(String message) {
         return new BusinessException(40300, 403, message);
     }

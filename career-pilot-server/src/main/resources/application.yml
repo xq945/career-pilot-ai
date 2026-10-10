@@ -19,11 +19,22 @@ spring:
 
   servlet:
     multipart:
-      # 全局单文件上限 10 MB（《系统架构设计》6.1，为 M3 简历预留）；头像另有 2 MB 业务级限制
+      # 单文件上限 10 MB（《系统架构设计》6.1）；头像另有 2 MB 业务级限制。
+      # 该检查在**流式读取中**触发：读满 10 MB 即中断，剩余数据不多，可优雅返回 413。
       max-file-size: 10MB
-      # 略大于 max-file-size：multipart 边界与请求头同样计入请求体，
-      # 两值相等时"恰好 10MB 的文件"会被误判超限
-      max-request-size: 11MB
+      # 请求体总上限刻意放宽到 50 MB（不是 11MB），原因见下方 tomcat 段：
+      # max-request-size 是**基于 Content-Length 的读取前预检查**，一旦触发，
+      # 请求体一个字节都没读就被拒绝，连接会被直接切断（浏览器只见网络错误）。
+      # 放宽后，10 MB 以上的文件走流式路径，统一由 max-file-size 承接并返回 413。
+      max-request-size: 50MB
+
+  tomcat:
+    # 请求体被拒时，Tomcat 需"吞掉"（swallow）剩余未读数据才能把 413 响应发完；
+    # 超出 swallow 上限则直接断连。默认 2MB 在浏览器上传 10 MB 以上文件时表现为
+    # "Failed to fetch"（curl 因已收到响应头看不出该问题，M2 曾据此误判为
+    # "不构成问题"——见《问题记录 · 配置与启动》）。与 max-request-size 对齐取 50MB，
+    # 保证 ≤50MB 的超限请求都能收到 413/41300 而非连接中断。
+    max-swallow-size: 50MB
 
   ai:
     deepseek:

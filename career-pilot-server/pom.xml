@@ -88,6 +88,17 @@
             <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
             <version>${mybatis-plus.version}</version>
         </dependency>
+        <!--
+          MyBatis-Plus 3.5.9 起将依赖 JSqlParser 的插件（PaginationInnerInterceptor 等）
+          从 mybatis-plus-extension 拆分到独立模块，starter 不再传递引入。
+          分页查询必须显式声明本依赖，否则注册分页插件时报「找不到符号」
+          （见《问题记录 · 构建与依赖》）。
+        -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>

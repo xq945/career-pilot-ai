@@ -67,9 +67,12 @@ public class SecurityConfig {
                         .authenticationEntryPoint((request, response, ex1) ->
                                 writeError(response, HttpServletResponse.SC_UNAUTHORIZED,
                                         ApiResponse.error(40100, "未登录或登录已过期")))
+                        // 授权失败（已认证但无权限）：按项目定死规则统一为 404/40400（R03）——
+                        // 40300 专指账号状态受限（当前仅登录时账号被禁用），资源级越权一律 404，
+                        // 不区分"不存在"与"无权访问"，避免暴露资源存在性（《API接口设计》§1/A01）
                         .accessDeniedHandler((request, response, ex1) ->
-                                writeError(response, HttpServletResponse.SC_FORBIDDEN,
-                                        ApiResponse.error(40300, "无权访问该资源"))))
+                                writeError(response, HttpServletResponse.SC_NOT_FOUND,
+                                        ApiResponse.error(40400, "资源不存在"))))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
