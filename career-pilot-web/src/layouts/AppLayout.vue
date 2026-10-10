@@ -24,7 +24,7 @@ import { useUserStore } from '@/stores/user'
  *
  * 导航按 §1.2 的四组结构渲染。未实现的项以 disabled 呈现，避免点击落到未实现的路由
  * 而报 404 —— 后续模块实现时把 ready 改为 true 即可
- * （当前已点亮：仪表盘、个人中心、简历管理、岗位管理）。
+ * （当前已点亮：仪表盘、简历管理、岗位管理、岗位匹配、AI 面试、个人中心）。
  */
 const route = useRoute()
 const router = useRouter()
@@ -49,7 +49,7 @@ const NAV_GROUPS = [
     label: 'AI 分析与练习',
     items: [
       { path: '/matches', text: '岗位匹配', icon: Aim, ready: true },
-      { path: '/interviews', text: 'AI 面试', icon: ChatLineSquare, ready: false },
+      { path: '/interviews', text: 'AI 面试', icon: ChatLineSquare, ready: true },
     ],
   },
   {

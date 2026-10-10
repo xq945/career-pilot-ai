@@ -74,6 +74,24 @@ const routes = [
         meta: { title: '匹配报告', group: 'AI 分析与练习' },
       },
       {
+        path: 'interviews',
+        name: 'interviews',
+        component: () => import('@/views/InterviewsView.vue'),
+        meta: { title: 'AI 面试', group: 'AI 分析与练习' },
+      },
+      {
+        path: 'interviews/:id',
+        name: 'interview-session',
+        component: () => import('@/views/InterviewSessionView.vue'),
+        meta: { title: '模拟面试答题', group: 'AI 分析与练习' },
+      },
+      {
+        path: 'interviews/:id/report',
+        name: 'interview-report',
+        component: () => import('@/views/InterviewReportView.vue'),
+        meta: { title: '面试报告', group: 'AI 分析与练习' },
+      },
+      {
         path: 'profile',
         name: 'profile',
         component: () => import('@/views/ProfileView.vue'),
