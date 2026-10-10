@@ -69,6 +69,15 @@ spring:
           # 提示词含简历原文，观测数据一律不记录内容（《系统架构设计》7 节第 7 条）
           log-prompt: false
           log-completion: false
+    # 工具调用的框架级兜底（M8 求职智能体）：
+    # 产品级的「单次请求 ≤5 次工具调用」上限在 AgentToolCallRecorder 中以中文信封软拦截，
+    # 这里刻意放宽到 20 次防失控；越限行为取 RETURN_ERROR_RESPONSE（错误响应交回模型自然收尾）——
+    # PoC 实测 THROW 模式下异常不会抛给调用方，`.call()` 会返回英文固定文案
+    # （"Total tool call limit (N) exceeded..."），不能作为产品文案来源。
+    tools:
+      limits:
+        max-total-tool-calls: 20
+        on-limit-exceeded: RETURN_ERROR_RESPONSE
 
   # Spring AI 2.0.1 没有自己的 timeout 属性（已核实其配置元数据）：它复用 Spring Boot
   # 自动装配的 RestClient.Builder，超时由下面两项注入（《Agent设计》8：连接 10 秒、读取 60 秒）。
@@ -88,6 +97,21 @@ app:
     # Token 有效期，单位秒，缺省 2 小时（《API接口设计》2 节）
     # 签名密钥 app.jwt.secret 存放在 application-local.yml
     expiration-seconds: 7200
+  agent:
+    # 单次对话总时长预算（《API接口设计》§8.1：总时长不超过 120 秒）。
+    # 落地方式为「回合边界的协作式终止」：每个工具执行前检查截止时间，超时则拒绝执行、
+    # 让模型基于已有结果收尾（整轮是阻塞调用，无法硬中断在途的 HTTP 读；
+    # 在途调用另受 spring.http.clients.read-timeout 约束）。
+    # 验证手法：以 --app.agent.total-timeout-millis=1 启动可确定性触发超时截断路径。
+    total-timeout-millis: 120000
+    # 单次请求工具调用次数上限（《Agent设计》§8：≤5 次），由 AgentToolCallRecorder 软拦截
+    max-tool-calls: 5
+    # 历史回放上限：只回放 user/assistant 文本消息（不回放工具消息——重建带 tool_calls 的
+    # 历史须逐字保真、工具结果是数千 token 的 JSON、且工具返回值是注入载体）
+    history-message-limit: 10
+    history-char-limit: 6000
+    # 注入提示词的资源清单条数上限（只给 ID/名称/分析状态，不给正文）
+    catalog-limit: 20
   match:
     # 匹配评分规则（《数据库设计》6.1「权重入配置」）：
     # 调整权重或算法时必须手工递增 rule-version，随报告写入 dimension_scores.ruleVersion；

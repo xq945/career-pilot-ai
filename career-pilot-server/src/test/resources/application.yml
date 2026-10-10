@@ -16,6 +16,15 @@ app:
     # 测试专用密钥，长度满足 HS256 的 32 字节要求。
     # 仅供单元测试使用，与真实环境无关。
     secret: test-only-secret-key-do-not-use-in-production-0123456789
+  agent:
+    # 同 app.match：本文件在测试 classpath 上优先于 src/main/resources/application.yml，
+    # AgentProperties 是构造器绑定的 fail-fast 配置，不同步声明会导致上下文加载测试（与
+    # Mockito 测试的 lambda 缓存）连带失败，故此处按主配置口径补齐。
+    total-timeout-millis: 120000
+    max-tool-calls: 5
+    history-message-limit: 10
+    history-char-limit: 6000
+    catalog-limit: 20
   match:
     # 本文件在测试 classpath 上**优先于** src/main/resources/application.yml
     # （同名文件只加载一个），因此评分配置必须在测试侧同步声明，

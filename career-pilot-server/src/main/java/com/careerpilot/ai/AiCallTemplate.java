@@ -1,12 +1,16 @@
 package com.careerpilot.ai;
 
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ResponseEntity;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 
 import com.careerpilot.common.BusinessException;
@@ -96,6 +100,72 @@ public class AiCallTemplate {
                 scene, modelName, elapsedMillis, promptTokens, completionTokens, totalTokens);
         return new AiCallResult<>(response.entity(), modelName, elapsedMillis,
                 promptTokens, completionTokens, totalTokens);
+    }
+
+    // ---------------------------------------------------------------- 带工具的对话调用（M8）
+
+    /**
+     * 求职智能体的对话调用（《API接口设计》§8.1；M8 起并入本类，保持"全项目唯一模型调用入口"）。
+     *
+     * <p>与 {@link #call} 的差异：输入是**消息列表 + 工具回调**、输出是自由文本；
+     * 计时、日志、脱敏与异常翻译（50200/50201）完全同构。
+     *
+     * <p>两个关键约定：
+     * <ul>
+     *   <li>**当前用户消息是 {@code history} 的最后一条** {@code UserMessage}——
+     *       框架的工具调用次数计数以"最后一条 UserMessage"为本轮起点（已核实），
+     *       不要改用 {@code .user(...)} 单独传；</li>
+     *   <li>同样绝不使用 {@code .param(...)}（见 {@link #call} 的约束说明）。</li>
+     * </ul>
+     *
+     * <p>工具越限不由本方法处理：框架侧配置了宽松兜底（RETURN_ERROR_RESPONSE），
+     * 产品级的 5 次上限与截断判定在 {@link RecordingToolCallback} / {@link AgentToolCallRecorder}。
+     */
+    public AgentCallResult callWithTools(String scene, String systemPrompt,
+                                         List<Message> history, List<ToolCallback> toolCallbacks) {
+        long startNanos = System.nanoTime();
+        ChatResponse chatResponse;
+        try {
+            chatResponse = chatClient.prompt()
+                    .system(systemPrompt)
+                    .messages(history)
+                    .toolCallbacks(toolCallbacks)
+                    .call()
+                    .chatResponse();
+        }
+        catch (BusinessException ex) {
+            throw ex;
+        }
+        catch (RuntimeException ex) {
+            throw translate(scene, ex, startNanos);
+        }
+
+        long elapsedMillis = elapsedMillis(startNanos);
+        String message = textOf(chatResponse);
+        if (message == null || message.isBlank()) {
+            // 空回复无法构成可用结果：按「输出无法解析」处理，整轮不落库
+            log.warn("AI 对话输出为空：scene={} 耗时={}ms", scene, elapsedMillis);
+            throw BusinessException.aiInvalidOutput(UNPARSABLE_MESSAGE);
+        }
+
+        String modelName = resolveModelName(chatResponse);
+        Usage usage = usageOf(chatResponse);
+        Integer promptTokens = usage == null ? null : usage.getPromptTokens();
+        Integer completionTokens = usage == null ? null : usage.getCompletionTokens();
+        Integer totalTokens = usage == null ? null : usage.getTotalTokens();
+
+        log.info("AI 对话完成：scene={} model={} 耗时={}ms promptTokens={} completionTokens={} totalTokens={}",
+                scene, modelName, elapsedMillis, promptTokens, completionTokens, totalTokens);
+        return new AgentCallResult(message, modelName, elapsedMillis,
+                promptTokens, completionTokens, totalTokens);
+    }
+
+    private static String textOf(ChatResponse chatResponse) {
+        if (chatResponse == null || chatResponse.getResult() == null
+                || chatResponse.getResult().getOutput() == null) {
+            return null;
+        }
+        return chatResponse.getResult().getOutput().getText();
     }
 
     // ---------------------------------------------------------------- 异常翻译
