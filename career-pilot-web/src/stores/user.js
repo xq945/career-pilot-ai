@@ -61,6 +61,31 @@ export const useUserStore = defineStore('user', () => {
     return profile
   }
 
+  /**
+   * 资料写操作的统一收口：接口响应即完整 UserProfile，
+   * 直接替换内存状态并同步 localStorage（顶栏与页面即时更新）。
+   */
+  function applyProfile(profile) {
+    user.value = profile
+    writeUser(profile)
+    return profile
+  }
+
+  /** 更新昵称 */
+  async function updateProfile(nickname) {
+    return applyProfile(await userApi.updateProfile({ nickname }))
+  }
+
+  /** 上传头像（即时生效，不随「保存修改」提交） */
+  async function changeAvatar(file) {
+    return applyProfile(await userApi.uploadAvatar(file))
+  }
+
+  /** 移除头像 */
+  async function removeAvatar() {
+    return applyProfile(await userApi.removeAvatar())
+  }
+
   /** 清空本地登录态。401 统一处理与退出登录共用 */
   function reset() {
     token.value = null
@@ -123,6 +148,9 @@ export const useUserStore = defineStore('user', () => {
     login,
     register,
     fetchProfile,
+    updateProfile,
+    changeAvatar,
+    removeAvatar,
     logout,
     reset,
     restore,

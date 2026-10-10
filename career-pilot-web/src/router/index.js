@@ -37,6 +37,12 @@ const routes = [
         component: () => import('@/views/DashboardView.vue'),
         meta: { title: '仪表盘', group: '总览' },
       },
+      {
+        path: 'profile',
+        name: 'profile',
+        component: () => import('@/views/ProfileView.vue'),
+        meta: { title: '个人中心', group: '账号' },
+      },
     ],
   },
   {

@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -22,8 +22,8 @@ import { useUserStore } from '@/stores/user'
  *
  * 例外页面不套用本布局：登录 / 注册用 AuthLayout（左右分栏）。
  *
- * 导航按 §1.2 的四组结构渲染。本次里程碑只实现仪表盘，其余项以 disabled 呈现，
- * 避免点击落到未实现的路由而报 404 —— 后续模块实现时把 ready 改为 true 即可。
+ * 导航按 §1.2 的四组结构渲染。未实现的项以 disabled 呈现，避免点击落到未实现的路由
+ * 而报 404 —— 后续模块实现时把 ready 改为 true 即可（已点亮：仪表盘、个人中心）。
  */
 const route = useRoute()
 const router = useRouter()
@@ -53,7 +53,7 @@ const NAV_GROUPS = [
   },
   {
     label: '账号',
-    items: [{ path: '/profile', text: '个人中心', icon: User, ready: false }],
+    items: [{ path: '/profile', text: '个人中心', icon: User, ready: true }],
   },
 ]
 
@@ -71,6 +71,23 @@ const breadcrumb = computed(() => {
   const title = route.meta?.title
   return [group, title].filter(Boolean)
 })
+
+/** 头像图片加载失败时回退为首字符占位（记录失败的 URL，换新头像后自动恢复尝试） */
+const brokenAvatar = ref('')
+
+const showAvatarImage = computed(() => {
+  const url = userStore.user?.avatar
+  return Boolean(url) && url !== brokenAvatar.value
+})
+
+function handleCommand(command) {
+  if (command === 'logout') {
+    handleLogout()
+  }
+  else if (command === 'profile') {
+    router.push({ name: 'profile' })
+  }
+}
 
 async function handleLogout() {
   await userStore.logout()
@@ -117,17 +134,27 @@ async function handleLogout() {
 
         <div class="topbar__spacer" />
 
-        <el-dropdown trigger="click" @command="($event) => $event === 'logout' && handleLogout()">
+        <el-dropdown trigger="click" @command="handleCommand">
           <button class="topbar__user" type="button">
-            <span class="topbar__avatar">{{ userStore.initial }}</span>
+            <img
+              v-if="showAvatarImage"
+              class="topbar__avatar topbar__avatar--img"
+              :src="userStore.user.avatar"
+              alt=""
+              @error="brokenAvatar = userStore.user.avatar"
+            >
+            <span v-else class="topbar__avatar">{{ userStore.initial }}</span>
             <span class="topbar__user-name">{{ userStore.displayName }}</span>
             <el-icon class="topbar__caret"><ArrowDown /></el-icon>
           </button>
           <template #dropdown>
             <el-dropdown-menu>
-              <!-- 个人中心页属后续里程碑，此处先给出明确提示而非死链 -->
               <el-dropdown-item disabled>
                 {{ userStore.user?.username || '未登录' }}
+              </el-dropdown-item>
+              <el-dropdown-item command="profile">
+                <el-icon><User /></el-icon>
+                个人中心
               </el-dropdown-item>
               <el-dropdown-item divided command="logout">
                 <el-icon><SwitchButton /></el-icon>
@@ -291,6 +318,11 @@ async function handleLogout() {
   align-items: center;
   justify-content: center;
   font-size: 12px;
+}
+
+/* 头像图片复用占位块的 26px 圆形尺寸 */
+.topbar__avatar--img {
+  object-fit: cover;
 }
 
 .topbar__caret {
