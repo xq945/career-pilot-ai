@@ -101,8 +101,17 @@ function zipStored(entries) {
 
 /* ------------------------------------------------------------------- PDF */
 
-/** 最小合法 PDF（未压缩 content stream，Helvetica 字体，可提取英文文本） */
+/**
+ * 最小合法 PDF（未压缩 content stream，Helvetica 字体，**仅支持 ASCII / Latin-1 文本**）。
+ *
+ * 手写 PDF 的 content stream 用 latin1 编码，**中文等 CJK 字符会被丢弃**
+ * （提取回来的文本会充满 U+FFFD，看起来像"简历乱码"）。
+ * 需要中文内容时请改用 {@link buildDocx} / {@link buildHtml} / {@link buildTxt}。
+ */
 export function buildPdf(lines) {
+  if (lines.some((line) => /[^\x00-\xFF]/.test(line))) {
+    throw new Error('buildPdf 仅支持 Latin-1 文本：中文内容请改用 buildDocx / buildHtml / buildTxt')
+  }
   const ops = lines
     .map((line, i) => `${i === 0 ? '' : '0 -16 Td '}(${escapePdfText(line)}) Tj`)
     .join(' ')

@@ -26,7 +26,8 @@ career-pilot-ai/
 ├─ career-pilot-server/   后端（Spring Boot 4.1.1 + Java 21）
 ├─ career-pilot-web/      前端（Vue 3 + Vite）
 ├─ prototype/             前端高保真原型（HTML，双击 index.html 即可查看）
-├─ tools/                 开发辅助工具：brand/ 品牌资源生成与校验、e2e/ 浏览器端到端验证
+├─ tools/                 开发辅助工具：brand/ 品牌资源生成与校验、e2e/ 浏览器端到端验证、
+│                         seed/ 演示数据种子（`node tools/seed/demo-data.mjs`）
 ├─ Mysql/                 数据库初始化脚本
 └─ docs/                  设计与接口文档（本地维护，不入库）
 ```
