@@ -1,9 +1,9 @@
 /**
  * 个人中心端到端验证（真实浏览器）。
  *
- * 覆盖《前端原型设计》§5.13（V1.4 定死头像规格）与《API接口设计》§3.4/3.6/3.7
- * 对应的前端行为：路由与导航、昵称修改的即时同步、头像上传/替换/移除的完整交互、
- * 客户端与服务端双侧校验、页内退出登录。
+ * 覆盖《前端原型设计》§5.13（V1.5：展示 / 编辑两态）与《API接口设计》§3.4/3.6/3.7
+ * 对应的前端行为：路由与导航、只读展示态与编辑态切换、昵称修改的即时同步、
+ * 头像上传/替换/移除的完整交互、客户端与服务端双侧校验、登录状态时间信息、页内退出。
  *
  * 前置条件：后端（8080，local 存储模式）与前端 dev server（5173）都已启动。
  *
@@ -63,6 +63,15 @@ await page.send('Emulation.setDeviceMetricsOverride', {
 const shot = async (name) => {
   if (SHOTS) {
     await page.screenshot(`${SHOTS}/${name}.png`)
+  }
+}
+
+/** 进入编辑态（已在编辑态则不重复点击） */
+async function enterEdit() {
+  const inEdit = await page.evaluate(`!!document.querySelector('.card__foot')`)
+  if (!inEdit) {
+    await page.evaluate(`document.querySelector('.icon-btn').click()`)
+    await page.waitFor(`!!document.querySelector('.card .el-form')`, { label: '进入编辑态' })
   }
 }
 
@@ -131,7 +140,7 @@ try {
     path.startsWith('/login') && decodeURIComponent(path).includes('redirect=/profile'),
     decodeURIComponent(path))
 
-  // ------------------------------------------------------------ ② 页面结构
+  // ------------------------------------------------------------ ② 页面结构（展示态）
 
   await page.fill(0, USER)
   await page.fill(1, PASS)
@@ -139,17 +148,29 @@ try {
   await page.waitFor(`location.pathname === '/profile'`, { label: '登录后回跳个人中心' })
 
   const text = await page.evaluate('document.body.innerText')
-  check('② 三张卡片渲染（基本资料 / 数据与隐私 / 登录状态）',
-    text.includes('基本资料') && text.includes('数据与隐私') && text.includes('登录状态'))
-  check('   数据与隐私四条说明与原型文案一致',
-    text.includes('不会回传到浏览器') && text.includes('保留')
-      && text.includes('仅本人可见') && text.includes('退出登录即清除'))
+  check('② 两张卡片渲染（基本资料 / 登录状态）',
+    text.includes('基本资料') && text.includes('登录状态'))
+  check('   已移除「数据与隐私」卡片', !text.includes('数据与隐私'))
+  check('   辅助小字不再展示（页面描述与字段提示）',
+    !text.includes('管理账号资料与登录状态') && !text.includes('创建后不可修改')
+      && !text.includes('可修改，不超过 50 个字符'))
   check('   页面不出现「修改密码」「注销账号」入口',
     !text.includes('修改密码') && !text.includes('注销账号'))
 
-  const disabledCount = await page.evaluate(
-    `document.querySelectorAll('.el-input.is-disabled').length`)
-  check('   用户名 / 邮箱 / 用户 ID 为只读禁用态', disabledCount === 3, `${disabledCount} 个禁用输入框`)
+  const viewState = await page.evaluate(`JSON.stringify({
+    statics: document.querySelectorAll('.field__static').length,
+    inputs: document.querySelectorAll('.el-input').length,
+    foot: !!document.querySelector('.card__foot'),
+    avatarActions: !!document.querySelector('.avatar-row__actions'),
+  })`)
+  const vs = JSON.parse(viewState)
+  check('   展示态：字段以文本呈现、无输入框 / 底部按钮 / 头像操作',
+    vs.statics === 4 && vs.inputs === 0 && !vs.foot && !vs.avatarActions, viewState)
+
+  const loginRow = await page.evaluate(
+    `[...document.querySelectorAll('.session-row__hint')].map((e) => e.textContent).join(' | ')`)
+  check('   登录状态展示本次登录时刻与已用时长',
+    loginRow.includes('本次登录') && loginRow.includes('已使用'), loginRow)
 
   const navActive = await page.evaluate(
     `[...document.querySelectorAll('.el-menu-item')]
@@ -158,10 +179,31 @@ try {
   check('   侧边栏「个人中心」入口已点亮', navActive === true)
   check('   面包屑显示「账号 / 个人中心」',
     (await page.textOf('.el-breadcrumb')).replace(/\s+/g, '').includes('账号/个人中心'))
-  await shot('01-profile')
+  await shot('01-profile-view')
+
+  // ------------------------------------------------------------ ②b 编辑态切换
+
+  await page.evaluate(`document.querySelector('.icon-btn').click()`)
+  await page.waitFor(`!!document.querySelector('.card .el-form')`, { label: '进入编辑态' })
+  const editState = await page.evaluate(`JSON.stringify({
+    inputs: document.querySelectorAll('.card .el-input').length,
+    disabled: document.querySelectorAll('.card .el-input.is-disabled').length,
+    foot: !!document.querySelector('.card__foot'),
+    avatarActions: !!document.querySelector('.avatar-row__actions'),
+  })`)
+  const es = JSON.parse(editState)
+  check('②b 点修改图标进入编辑态：昵称输入框 + 3 个只读框 + 底部按钮 + 头像操作',
+    es.inputs === 4 && es.disabled === 3 && es.foot && es.avatarActions, editState)
+  await shot('02-edit-mode')
+
+  await page.evaluate(`document.querySelector('.icon-btn').click()`)
+  await page.waitFor(`!document.querySelector('.card .el-form')`, { label: '回到展示态' })
+  check('   再点图标回到展示态',
+    await page.evaluate(`document.querySelectorAll('.field__static').length === 4 && !document.querySelector('.card__foot')`))
 
   // ------------------------------------------------------------ ③ 昵称修改与即时同步
 
+  await enterEdit()
   await page.fill(0, NEW_NICKNAME)
   await page.click('.card__foot .el-button--primary')
   await page.waitFor(
@@ -170,6 +212,8 @@ try {
 
   check('③ 保存后顶栏即时更新为新昵称',
     (await page.textOf('.topbar__user-name')) === NEW_NICKNAME)
+  check('   保存后回到展示态且昵称以文本呈现',
+    await page.evaluate(`document.querySelectorAll('.field__static')[0]?.textContent === '${NEW_NICKNAME}'`))
   const storedName = await page.evaluate(
     `JSON.parse(localStorage.getItem('user') || 'null')?.nickname`)
   check('   localStorage 同步新昵称', storedName === NEW_NICKNAME, String(storedName))
@@ -182,12 +226,13 @@ try {
 
   // ------------------------------------------------------------ ④ 昵称校验（前端 + 服务端）
 
+  await enterEdit()
   await page.fill(0, 'a'.repeat(51))
   // 走真实用户路径：点「保存修改」触发全量校验 → 校验失败则不发请求
   await page.click('.card__foot .el-button--primary')
   await sleep(500)
   const filledLength = await page.evaluate(
-    `document.querySelectorAll('.el-input__inner')[0].value.length`)
+    `document.querySelectorAll('.card .el-input__inner')[0].value.length`)
   const clientError = await page.evaluate(
     `document.querySelector('.el-form-item__error')?.textContent ?? ''`)
 
@@ -213,13 +258,15 @@ try {
   // ------------------------------------------------------------ ⑤ 取消还原
 
   await page.fill(0, '临时输入内容')
-  await page.click('.card__foot .el-button:not(.el-button--primary)')
-  const cancelValue = await page.evaluate(
-    `document.querySelectorAll('.el-input__inner')[0].value`)
-  check('⑤ 取消后输入框还原为已保存的昵称', cancelValue === NEW_NICKNAME, cancelValue)
+  await page.evaluate(`[...document.querySelectorAll('.card__foot .el-button')]
+    .find((el) => el.textContent.trim() === '取消').click()`)
+  await page.waitFor(`!document.querySelector('.card .el-form')`, { label: '取消后回到展示态' })
+  check('⑤ 取消后回到展示态且昵称还原为已保存值',
+    await page.evaluate(`document.querySelectorAll('.field__static')[0]?.textContent === '${NEW_NICKNAME}'`))
 
-  // ------------------------------------------------------------ ⑥ 上传头像
+  // ------------------------------------------------------------ ⑥ 上传头像（编辑态）
 
+  await enterEdit()
   await injectPng('e2e-avatar.png')
   await page.waitFor(
     `(() => { const i = document.querySelector('.avatar--img'); return !!i && i.naturalWidth > 0 })()`,
@@ -238,10 +285,11 @@ try {
   await page.waitFor(
     `(() => { const i = document.querySelector('.avatar--img'); return !!i && i.naturalWidth > 0 })()`,
     { label: '刷新后头像仍显示', timeout: 15000 })
-  check('   刷新后头像仍然显示', (await avatarState()).pageLoaded)
+  check('   刷新后（回到展示态）头像仍然显示', (await avatarState()).pageLoaded)
 
   // ------------------------------------------------------------ ⑦ 替换头像
 
+  await enterEdit()
   await injectPng('e2e-avatar-2.png')
   await page.waitFor(
     `JSON.parse(localStorage.getItem('user') || 'null')?.avatar !== '${firstUrl}'`,
@@ -300,7 +348,7 @@ try {
 
   await page.reload()
   await page.waitFor(`location.pathname === '/profile'`, { label: '刷新' })
-  check('   刷新后无头像状态保持', (await avatarState()).stored === null)
+  check('   刷新后（展示态）无头像状态保持', (await avatarState()).stored === null)
   await shot('10-avatar-removed')
 
   // ------------------------------------------------------------ ⑪ 页内退出登录

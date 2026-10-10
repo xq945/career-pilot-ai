@@ -1,28 +1,48 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Edit } from '@element-plus/icons-vue'
 
 import { useUserStore } from '@/stores/user'
 
 /**
- * 个人中心（《前端原型设计》§5.13，V1.4 定死头像规格）。
+ * 个人中心（《前端原型设计》§5.13，V1.5：展示 / 编辑两态）。
  *
  * 接口：PUT /api/user/profile（昵称）、POST/DELETE /api/user/avatar（头像）。
- * 头像上传/移除**即时生效**、不随「保存修改」提交；顶栏与页面的同步
- * 由 user store 的 applyProfile 收口完成（内存 + localStorage 双写）。
+ * 基本资料默认**只读展示**，点修改图标进入编辑态；头像上传/移除**即时生效**、
+ * 不随「保存修改」提交——「取消」只还原昵称、不撤销头像。
  */
 const router = useRouter()
 const userStore = useUserStore()
 
-/* ---------- 昵称表单 ---------- */
+/* ---------- 基本资料：展示 / 编辑两态 ---------- */
+const editing = ref(false)
 const formRef = ref()
 const saving = ref(false)
-const form = reactive({ nickname: userStore.user?.nickname ?? '' })
+const form = reactive({ nickname: '' })
 
 const rules = {
   // 不设 required：空串是合法的「清空昵称」表达（《API接口设计》3.4）
   nickname: [{ max: 50, message: '昵称不能超过 50 个字符', trigger: 'blur' }],
+}
+
+const currentNickname = computed(() => userStore.user?.nickname || '')
+
+/** 点修改图标：展示态进入编辑态；编辑态再点视为取消 */
+function startEdit() {
+  if (editing.value) {
+    cancelEdit()
+    return
+  }
+  form.nickname = currentNickname.value
+  editing.value = true
+}
+
+function cancelEdit() {
+  form.nickname = currentNickname.value
+  formRef.value?.clearValidate()
+  editing.value = false
 }
 
 async function handleSave() {
@@ -34,6 +54,7 @@ async function handleSave() {
   try {
     await userStore.updateProfile(form.nickname.trim())
     ElMessage.success('已保存')
+    editing.value = false
   }
   catch (error) {
     // 40001 的字段级提示优先展示（《前端原型设计》§7.1）
@@ -49,13 +70,7 @@ async function handleSave() {
   }
 }
 
-function handleCancel() {
-  form.nickname = userStore.user?.nickname ?? ''
-  // 放弃编辑时一并清除校验错误提示（如超长昵称留下的错误态）
-  formRef.value?.clearValidate()
-}
-
-/* ---------- 头像 ---------- */
+/* ---------- 头像（编辑态显示操作，上传/移除仍即时生效） ---------- */
 const uploading = ref(false)
 const brokenAvatar = ref('')
 
@@ -110,6 +125,48 @@ async function handleRemoveAvatar() {
   }
 }
 
+/* ---------- 登录状态：本次登录时刻 + 已用时长 ---------- */
+/** 从 Token 载荷解析签发时间（ms）；无 Token 或解析失败返回 null */
+function readIssuedAt() {
+  try {
+    const part = userStore.token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = part + '='.repeat((4 - (part.length % 4)) % 4)
+    const issuedAt = JSON.parse(atob(padded)).iat
+    return issuedAt ? issuedAt * 1000 : null
+  }
+  catch {
+    return null
+  }
+}
+
+const loginAt = computed(() => readIssuedAt())
+
+const now = ref(Date.now())
+let clockTimer
+
+onMounted(() => {
+  // 每分钟刷新「已使用时长」（Token 有效期以小时计，无需更细粒度）
+  clockTimer = setInterval(() => { now.value = Date.now() }, 60000)
+})
+onUnmounted(() => clearInterval(clockTimer))
+
+const loginAtText = computed(() => {
+  if (!loginAt.value) {
+    return '—'
+  }
+  const d = new Date(loginAt.value)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+})
+
+const usedTimeText = computed(() => {
+  if (!loginAt.value) {
+    return '—'
+  }
+  const minutes = Math.max(1, Math.floor((now.value - loginAt.value) / 60000))
+  return `${minutes} 分钟`
+})
+
 /* ---------- 退出登录（与顶栏菜单同一动作，原型 §3/§5.13） ---------- */
 async function handleLogout() {
   await userStore.logout()
@@ -122,15 +179,16 @@ async function handleLogout() {
   <div class="profile">
     <div class="page-head">
       <h1>个人中心</h1>
-      <p class="page-head__desc">管理账号资料与登录状态</p>
     </div>
 
-    <!-- 基本资料 -->
+    <!-- 基本资料：展示态 / 编辑态 -->
     <el-card shadow="never" class="card">
       <template #header>
         <div class="card__head">
           <h2>基本资料</h2>
-          <span class="card__sub">昵称与头像会显示在页面右上角</span>
+          <button class="icon-btn" type="button" title="修改资料" aria-label="修改资料" @click="startEdit">
+            <el-icon><Edit /></el-icon>
+          </button>
         </div>
       </template>
 
@@ -143,7 +201,8 @@ async function handleLogout() {
           @error="brokenAvatar = userStore.user.avatar"
         >
         <span v-else class="avatar">{{ userStore.initial }}</span>
-        <div>
+        <!-- 头像操作仅在编辑态出现；上传/移除仍即时生效 -->
+        <div v-if="editing">
           <div class="avatar-row__actions">
             <el-upload
               action="#"
@@ -164,51 +223,55 @@ async function handleLogout() {
         </div>
       </div>
 
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
+      <!-- 编辑态：可输入表单 -->
+      <el-form v-if="editing" ref="formRef" :model="form" :rules="rules" label-position="top">
         <div class="field-grid">
           <el-form-item label="昵称" prop="nickname">
             <el-input v-model="form.nickname" maxlength="50" placeholder="请输入昵称" />
-            <div class="field__hint">可修改，不超过 50 个字符</div>
           </el-form-item>
 
           <el-form-item label="用户名">
             <el-input :model-value="userStore.user?.username ?? ''" disabled />
-            <div class="field__hint">登录标识，创建后不可修改</div>
           </el-form-item>
 
           <el-form-item label="邮箱">
             <el-input :model-value="userStore.user?.email ?? ''" disabled />
-            <div class="field__hint">登录标识，创建后不可修改</div>
           </el-form-item>
 
           <el-form-item label="用户 ID">
             <el-input :model-value="String(userStore.user?.id ?? '')" disabled />
-            <div class="field__hint">系统内部标识</div>
           </el-form-item>
         </div>
       </el-form>
 
-      <div class="card__foot">
-        <el-button @click="handleCancel">
+      <!-- 展示态：只读文本 -->
+      <div v-else class="field-grid">
+        <div class="field">
+          <div class="field__label">昵称</div>
+          <div class="field__static">{{ currentNickname || '—' }}</div>
+        </div>
+        <div class="field">
+          <div class="field__label">用户名</div>
+          <div class="field__static">{{ userStore.user?.username }}</div>
+        </div>
+        <div class="field">
+          <div class="field__label">邮箱</div>
+          <div class="field__static">{{ userStore.user?.email }}</div>
+        </div>
+        <div class="field">
+          <div class="field__label">用户 ID</div>
+          <div class="field__static">{{ userStore.user?.id }}</div>
+        </div>
+      </div>
+
+      <div v-if="editing" class="card__foot">
+        <el-button @click="cancelEdit">
           取消
         </el-button>
         <el-button type="primary" :loading="saving" @click="handleSave">
           保存修改
         </el-button>
       </div>
-    </el-card>
-
-    <!-- 数据与隐私 -->
-    <el-card shadow="never" class="card">
-      <template #header>
-        <h2>数据与隐私</h2>
-      </template>
-      <ul class="bullets">
-        <li>简历文本仅保存在服务端，用于 AI 分析，<strong>不会回传到浏览器</strong>，平台不提供简历原文的预览与下载。</li>
-        <li>删除简历后，简历文件会从服务器同步删除；由该简历产生的分析、匹配与面试记录会<strong>保留</strong>，便于追溯历史结论。</li>
-        <li>智能体对话记录与简历同属个人数据，仅本人可见。</li>
-        <li>登录凭据保存在浏览器本地，退出登录即清除；如使用公共电脑，离开前请退出登录。</li>
-      </ul>
     </el-card>
 
     <!-- 登录状态 -->
@@ -220,6 +283,7 @@ async function handleLogout() {
         <div>
           <div class="session-row__strong">当前设备已登录</div>
           <div class="session-row__hint">Token 有效期 2 小时，过期后需重新登录</div>
+          <div class="session-row__hint">本次登录：{{ loginAtText }}　·　已使用：{{ usedTimeText }}</div>
         </div>
         <el-button type="danger" plain @click="handleLogout">
           退出登录
@@ -230,9 +294,10 @@ async function handleLogout() {
 </template>
 
 <style scoped>
-/* 内容区收窄至 820px（原型 §5.13 的页面宽度） */
+/* 内容区收窄至 820px 并水平居中（原型 §5.13 V1.5） */
 .profile {
   max-width: 820px;
+  margin: 0 auto;
 }
 
 .page-head {
@@ -242,11 +307,6 @@ async function handleLogout() {
 .page-head h1 {
   font-size: 22px;
   margin-bottom: 4px;
-}
-
-.page-head__desc {
-  font-size: 13px;
-  color: var(--ink-500);
 }
 
 .card {
@@ -264,7 +324,7 @@ async function handleLogout() {
 
 .card__head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
 }
 
@@ -272,9 +332,26 @@ async function handleLogout() {
   font-size: 17px;
 }
 
-.card__sub {
-  font-size: 12px;
-  color: var(--ink-400);
+/* 卡片头右上角的修改图标按钮 */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--ink-500);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.icon-btn:hover {
+  color: var(--brand-600);
+  border-color: var(--brand-200);
+  background: var(--brand-50);
 }
 
 /* ---- 头像行 ---- */
@@ -312,18 +389,31 @@ async function handleLogout() {
   color: var(--ink-400);
 }
 
-/* ---- 字段 ---- */
+/* ---- 字段：展示态（文本）/ 编辑态（表单）共用两列网格 ---- */
 .field-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0 24px;
 }
 
-.field__hint {
-  font-size: 12px;
-  color: var(--ink-400);
-  line-height: 1.5;
-  margin-top: 4px;
+.field {
+  margin-bottom: 16px;
+}
+
+.field__label {
+  font-size: 13px;
+  color: var(--ink-700);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+/* 与输入框同高，保证两态切换时不跳动 */
+.field__static {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  font-size: 13px;
+  color: var(--ink-900);
 }
 
 .card__foot {
@@ -331,15 +421,6 @@ async function handleLogout() {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
-}
-
-/* ---- 数据与隐私 ---- */
-.bullets {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 14px;
-  color: var(--ink-700);
-  line-height: 1.9;
 }
 
 /* ---- 登录状态 ---- */
