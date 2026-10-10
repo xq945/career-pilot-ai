@@ -1,11 +1,13 @@
 package com.careerpilot.dto;
 
-import com.careerpilot.entity.SysUser;
-
 /**
  * 用户资料，用于登录响应与当前用户接口（《API接口设计》3.3）。
  *
- * 作为对外视图，**不包含密码**。
+ * 作为对外视图，**不包含密码**；`avatar` 为可直接用于 `<img src>` 的访问地址。
+ *
+ * 本类**不提供构建方法**：装配统一在 {@code UserService.toView} 完成——
+ * 数据库里存的是存储标识（如 `3/a1b2c3d4.jpg`），外部视图必须经存储层转换为
+ * 访问地址，绕过转换直接暴露原始值会造成头像显示失败，故从源头禁止。
  */
 public class UserProfile {
 
@@ -18,16 +20,6 @@ public class UserProfile {
     private String nickname;
 
     private String avatar;
-
-    public static UserProfile from(SysUser user) {
-        UserProfile profile = new UserProfile();
-        profile.id = user.getId();
-        profile.username = user.getUsername();
-        profile.email = user.getEmail();
-        profile.nickname = user.getNickname();
-        profile.avatar = user.getAvatar();
-        return profile;
-    }
 
     public Long getId() {
         return id;

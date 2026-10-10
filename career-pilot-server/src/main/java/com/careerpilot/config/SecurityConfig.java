@@ -29,7 +29,7 @@ import tools.jackson.databind.ObjectMapper;
  * Spring Security 配置，依据《系统架构设计》7 节与《API接口设计》2 节。
  *
  * - 无状态：不使用 Session，认证完全依赖 JWT；
- * - 公开接口仅注册与登录，其余一律要求认证；
+ * - 公开路径为注册、登录与 /uploads/**（公开文件，见 7.1 节），其余一律要求认证；
  * - 未认证 / 无权限统一返回与业务接口一致的响应结构；
  * - CORS 来源从配置读取（不用通配符），生产同源部署时应关闭。
  */
@@ -59,6 +59,9 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                        // 头像等公开文件（《系统架构设计》7.1）：<img> 标签不携带 Authorization 头，
+                        // 且地址含不可枚举的 UUID，故只读开放；资源映射见 WebMvcConfig（两处缺一不可）
+                        .requestMatchers("/uploads/**").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((request, response, ex1) ->

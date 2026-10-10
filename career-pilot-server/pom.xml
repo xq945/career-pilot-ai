@@ -39,6 +39,12 @@
           也避免个别子模块在镜像站同步不全导致构建失败。
         -->
         <tika.version>3.3.2</tika.version>
+        <!--
+          阿里云 OSS SDK：独立库（不绑定 Spring Boot 版本），供可选的 OSS 存储实现使用
+          （《系统架构设计》7.1 存储层抽象，M2 定死）。选 3.18.5 = 3.x 线最新稳定版
+          （经 Maven 中央仓库 maven-metadata.xml 核实，最近更新 2026-01）。
+        -->
+        <aliyun-sdk-oss.version>3.18.5</aliyun-sdk-oss.version>
     </properties>
 
     <dependencyManagement>
@@ -117,6 +123,13 @@
             <groupId>org.apache.tika</groupId>
             <artifactId>tika-parsers-standard-package</artifactId>
             <version>${tika.version}</version>
+        </dependency>
+
+        <!-- ===== 对象存储（可选实现：app.file.storage-type=oss 时使用） ===== -->
+        <dependency>
+            <groupId>com.aliyun.oss</groupId>
+            <artifactId>aliyun-sdk-oss</artifactId>
+            <version>${aliyun-sdk-oss.version}</version>
         </dependency>
 
         <!-- ===== 简化样板代码 ===== -->

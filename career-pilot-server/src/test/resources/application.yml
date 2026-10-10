@@ -16,3 +16,8 @@ app:
     # 测试专用密钥，长度满足 HS256 的 32 字节要求。
     # 仅供单元测试使用，与真实环境无关。
     secret: test-only-secret-key-do-not-use-in-production-0123456789
+  file:
+    # FileStorageProperties 在构造时创建存储根目录：不覆盖的话，
+    # @SpringBootTest 会在真实用户主目录下创建 career-pilot-uploads。
+    # 这里改到构建目录，随 mvn clean 一起清理。
+    storage-root: target/test-uploads

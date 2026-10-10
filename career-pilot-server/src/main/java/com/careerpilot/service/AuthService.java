@@ -15,7 +15,10 @@ import com.careerpilot.mapper.SysUserMapper;
 import com.careerpilot.security.JwtTokenProvider;
 
 /**
- * 认证与用户服务（《API接口设计》3 节）。
+ * 认证服务（《API接口设计》3 节）：注册、登录与 Token 签发。
+ *
+ * 用户资料的读写已迁至 UserService；本类经它装配用户视图
+ * （register/login 响应中的 avatar 需由存储层转换为访问地址）。
  */
 @Service
 public class AuthService {
@@ -28,11 +31,14 @@ public class AuthService {
 
     private final JwtTokenProvider tokenProvider;
 
+    private final UserService userService;
+
     public AuthService(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
-                       JwtTokenProvider tokenProvider) {
+                       JwtTokenProvider tokenProvider, UserService userService) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.tokenProvider = tokenProvider;
+        this.userService = userService;
     }
 
     /** 注册：用户名与邮箱唯一，密码以 BCrypt 哈希保存 */
@@ -58,7 +64,7 @@ public class AuthService {
         user.setStatus(STATUS_ENABLED);
         userMapper.insert(user);
 
-        return UserProfile.from(user);
+        return userService.toView(user);
     }
 
     /** 登录：账号可为用户名或邮箱 */
@@ -79,17 +85,8 @@ public class AuthService {
         LoginResponse response = new LoginResponse();
         response.setToken(tokenProvider.generateToken(user.getId(), user.getUsername()));
         response.setExpiresIn(tokenProvider.getExpirationSeconds());
-        response.setUser(UserProfile.from(user));
+        response.setUser(userService.toView(user));
         return response;
-    }
-
-    /** 读取当前用户资料 */
-    public UserProfile getProfile(Long userId) {
-        SysUser user = userMapper.selectById(userId);
-        if (user == null) {
-            throw BusinessException.notFound("用户不存在");
-        }
-        return UserProfile.from(user);
     }
 
 }

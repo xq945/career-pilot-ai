@@ -37,6 +37,16 @@ public class BusinessException extends RuntimeException {
         return new BusinessException(40400, 404, message);
     }
 
+    /** 413 / 41300 文件过大 */
+    public static BusinessException payloadTooLarge(String message) {
+        return new BusinessException(41300, 413, message);
+    }
+
+    /** 415 / 41500 文件类型不支持 */
+    public static BusinessException unsupportedMediaType(String message) {
+        return new BusinessException(41500, 415, message);
+    }
+
     public int getCode() {
         return code;
     }
