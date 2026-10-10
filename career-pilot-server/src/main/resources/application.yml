@@ -52,6 +52,32 @@ spring:
           model: deepseek-flash
           # 结构化输出场景宜取低值（《Agent设计》7.1）
           temperature: 0.3
+    # 【必须显式配置】Spring AI 的重试默认 max-attempts=10、退避 2000ms × 5 倍递增
+    # （见 spring-ai-autoconfigure-retry 的配置元数据），一次读取超时会被重试到分钟级，
+    # 与「单次调用读超时 60 秒 + 前端 120 秒」的约定直接冲突。
+    # 《Agent设计》8 要求"只对可恢复错误有限重试（建议最多 2 次）"，故取 2 次尝试
+    # （1 次初始 + 1 次重试）：最坏 60 + 0.5 + 60 ≈ 121 秒，与前端 120 秒基本对齐。
+    retry:
+      max-attempts: 2
+      backoff:
+        initial-interval: 500ms
+        multiplier: 1
+        max-interval: 1s
+    chat:
+      client:
+        observations:
+          # 提示词含简历原文，观测数据一律不记录内容（《系统架构设计》7 节第 7 条）
+          log-prompt: false
+          log-completion: false
+
+  # Spring AI 2.0.1 没有自己的 timeout 属性（已核实其配置元数据）：它复用 Spring Boot
+  # 自动装配的 RestClient.Builder，超时由下面两项注入（《Agent设计》8：连接 10 秒、读取 60 秒）。
+  # 全项目仅 AI 一处出站 HTTP（Tika 为本地解析），全局生效安全。
+  # 调小 read-timeout（如 1s）可作为 50200 的构造手段（《测试与验收方案》2.3）。
+  http:
+    clients:
+      connect-timeout: 10s
+      read-timeout: 60s
 
 # 敏感配置约定（《系统架构设计》7、9 节）：
 # 数据库密码、JWT 密钥、DeepSeek API Key 一律通过环境变量或 application-local.yml

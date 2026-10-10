@@ -126,6 +126,8 @@ npm run dev
 | 允许的跨域来源 | `http://localhost:5173` | `app.cors.allowed-origins` |
 | JWT 有效期 | 7200 秒 | `app.jwt.expiration-seconds` |
 | 模型名 | `deepseek-flash` | `spring.ai.deepseek.chat.options.model` |
+| AI 调用超时 | 连接 10 秒 / 读取 60 秒 | `spring.http.clients.connect-timeout` / `read-timeout`（调小可用于构造 50200 场景） |
+| 模型调用重试 | 2 次尝试（1 次初始 + 1 次重试） | `spring.ai.retry.max-attempts`（**必须显式配置**：Spring AI 默认为 10 次，会把单次超时放大到分钟级） |
 | 文件存储实现 | `local`（本地磁盘） | `app.file.storage-type`（`oss` 切换阿里云 OSS，见配置模板） |
 | 本地存储根目录 | `${user.home}/career-pilot-uploads` | `app.file.storage-root`（须位于项目运行目录之外） |
 | 单文件上传上限 | 10 MB（简历；容器层与业务层双重校验） | `spring.servlet.multipart.max-file-size`（头像另有 2 MB 业务限制；配套的 `max-request-size` 与 `server.tomcat.max-swallow-size` 为 50 MB，**调大文件上限时需同步调整**，原因见 `application.yml` 注释） |

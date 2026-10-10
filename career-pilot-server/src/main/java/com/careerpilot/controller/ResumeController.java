@@ -13,17 +13,20 @@ import org.springframework.web.multipart.MultipartFile;
 import com.careerpilot.common.ApiResponse;
 import com.careerpilot.common.PageQuery;
 import com.careerpilot.common.PageResult;
+import com.careerpilot.dto.ResumeAnalysisDetail;
+import com.careerpilot.dto.ResumeAnalysisView;
 import com.careerpilot.dto.ResumeDetail;
 import com.careerpilot.dto.ResumeUploadRequest;
 import com.careerpilot.dto.ResumeUploadResponse;
 import com.careerpilot.dto.ResumeView;
 import com.careerpilot.security.CurrentUser;
+import com.careerpilot.service.ResumeAnalysisService;
 import com.careerpilot.service.ResumeService;
 
 import jakarta.validation.Valid;
 
 /**
- * 简历接口（《API接口设计》4.1–4.4）。
+ * 简历接口（《API接口设计》4.1–4.6）。
  *
  * 用户身份一律取自认证上下文，不接受前端传入的 userId（《系统架构设计》4.1）。
  */
@@ -33,8 +36,11 @@ public class ResumeController {
 
     private final ResumeService resumeService;
 
-    public ResumeController(ResumeService resumeService) {
+    private final ResumeAnalysisService resumeAnalysisService;
+
+    public ResumeController(ResumeService resumeService, ResumeAnalysisService resumeAnalysisService) {
         this.resumeService = resumeService;
+        this.resumeAnalysisService = resumeAnalysisService;
     }
 
     /**
@@ -69,6 +75,23 @@ public class ResumeController {
     public ApiResponse<Void> delete(@PathVariable Long id) {
         resumeService.delete(CurrentUser.requireId(), id);
         return ApiResponse.success();
+    }
+
+    /**
+     * 发起简历分析（4.5）：无请求体；同步调用通常 10–30 秒（前端超时按 AI 接口约定设 120 秒）。
+     *
+     * 简历内容未变化时直接复用已有结果（不重复调用模型）；模型超时/不可用 → 50200、
+     * 输出无法解析 → 50201，失败不写入任何分析记录。
+     */
+    @PostMapping("/{id}/analyze")
+    public ApiResponse<ResumeAnalysisDetail> analyze(@PathVariable Long id) {
+        return ApiResponse.success(resumeAnalysisService.analyze(CurrentUser.requireId(), id));
+    }
+
+    /** 获取简历分析（4.6）：返回最新一版成功分析；无结果时 HTTP 200 + analyzed=false */
+    @GetMapping("/{id}/analysis")
+    public ApiResponse<ResumeAnalysisView> analysis(@PathVariable Long id) {
+        return ApiResponse.success(resumeAnalysisService.getLatest(CurrentUser.requireId(), id));
     }
 
 }

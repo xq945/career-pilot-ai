@@ -53,6 +53,20 @@ public class BusinessException extends RuntimeException {
         return new BusinessException(41500, 415, message);
     }
 
+    /**
+     * 502 / 50200 大模型服务暂不可用（超时、网络故障、上游 HTTP 错误；可重试）。
+     *
+     * 抛出后不写入任何分析记录（《数据库设计》5.3：第一版只保存成功结果）。
+     */
+    public static BusinessException aiUnavailable(String message) {
+        return new BusinessException(50200, 502, message);
+    }
+
+    /** 502 / 50201 大模型输出无法解析（未保存任何结果，可重试） */
+    public static BusinessException aiInvalidOutput(String message) {
+        return new BusinessException(50201, 502, message);
+    }
+
     public int getCode() {
         return code;
     }

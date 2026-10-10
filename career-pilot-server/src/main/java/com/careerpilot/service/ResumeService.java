@@ -81,9 +81,6 @@ public class ResumeService {
             "<(?:!doctype|html|head|body|title|meta|div|p|span|h[1-6]|table|ul|ol|li|a|br|section|article)\\b",
             Pattern.CASE_INSENSITIVE);
 
-    /** 分析结果的成功状态（《数据库设计》5.3：第一版只保存成功结果） */
-    private static final String ANALYSIS_STATUS_SUCCESS = "SUCCESS";
-
     private final ResumeMapper resumeMapper;
 
     private final ResumeAnalysisMapper resumeAnalysisMapper;
@@ -167,7 +164,7 @@ public class ResumeService {
 
     /** 详情（4.3）：仅元数据，不返回提取文本与存储路径 */
     public ResumeDetail detail(Long userId, Long id) {
-        Resume resume = requireActiveResume(userId, id);
+        Resume resume = getOwnedResume(userId, id);
         ResumeDetail detail = new ResumeDetail();
         detail.setId(resume.getId());
         detail.setName(resume.getName());
@@ -206,8 +203,13 @@ public class ResumeService {
 
     // ---------------------------------------------------------------- 内部方法
 
-    /** 归属校验：查不到（不存在或属于他人）一律 404 */
-    private Resume requireActiveResume(Long userId, Long id) {
+    /**
+     * 归属校验：查不到（不存在或属于他人）一律 404，不区分二者以避免暴露资源存在性。
+     *
+     * M4 起对外公开：简历分析（{@link ResumeAnalysisService}）与 M8 的 Agent 工具
+     * 复用同一条归属校验路径（《Agent设计》4.1 示意代码即调用本方法）。
+     */
+    public Resume getOwnedResume(Long userId, Long id) {
         Resume resume = resumeMapper.selectOne(Wrappers.<Resume>lambdaQuery()
                 .eq(Resume::getId, id)
                 .eq(Resume::getUserId, userId)
@@ -222,7 +224,7 @@ public class ResumeService {
     private boolean isAnalyzed(Long resumeId) {
         Long count = resumeAnalysisMapper.selectCount(Wrappers.<ResumeAnalysis>lambdaQuery()
                 .eq(ResumeAnalysis::getResumeId, resumeId)
-                .eq(ResumeAnalysis::getStatus, ANALYSIS_STATUS_SUCCESS));
+                .eq(ResumeAnalysis::getStatus, ResumeAnalysis.STATUS_SUCCESS));
         return count != null && count > 0;
     }
 
@@ -239,7 +241,7 @@ public class ResumeService {
         return resumeAnalysisMapper.selectList(Wrappers.<ResumeAnalysis>lambdaQuery()
                         .select(ResumeAnalysis::getResumeId)
                         .in(ResumeAnalysis::getResumeId, ids)
-                        .eq(ResumeAnalysis::getStatus, ANALYSIS_STATUS_SUCCESS))
+                        .eq(ResumeAnalysis::getStatus, ResumeAnalysis.STATUS_SUCCESS))
                 .stream()
                 .map(ResumeAnalysis::getResumeId)
                 .collect(Collectors.toSet());
