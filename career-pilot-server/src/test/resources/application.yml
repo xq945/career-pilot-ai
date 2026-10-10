@@ -16,6 +16,17 @@ app:
     # 测试专用密钥，长度满足 HS256 的 32 字节要求。
     # 仅供单元测试使用，与真实环境无关。
     secret: test-only-secret-key-do-not-use-in-production-0123456789
+  match:
+    # 本文件在测试 classpath 上**优先于** src/main/resources/application.yml
+    # （同名文件只加载一个），因此评分配置必须在测试侧同步声明，
+    # 否则 MatchScoringProperties 构造校验会因权重为 0 而失败。
+    rule-version: v1
+    weights:
+      required-skills: 45
+      project-relevance: 25
+      experience: 15
+      education: 10
+      preferred-skills: 5
   file:
     # FileStorageProperties 在构造时创建存储根目录：不覆盖的话，
     # @SpringBootTest 会在真实用户主目录下创建 career-pilot-uploads。

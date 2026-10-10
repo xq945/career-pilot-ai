@@ -88,6 +88,17 @@ app:
     # Token 有效期，单位秒，缺省 2 小时（《API接口设计》2 节）
     # 签名密钥 app.jwt.secret 存放在 application-local.yml
     expiration-seconds: 7200
+  match:
+    # 匹配评分规则（《数据库设计》6.1「权重入配置」）：
+    # 调整权重或算法时必须手工递增 rule-version，随报告写入 dimension_scores.ruleVersion；
+    # 五项权重之和必须为 100、不允许负值，否则应用启动即失败（MatchScoringProperties 构造校验）。
+    rule-version: v1
+    weights:
+      required-skills: 45
+      project-relevance: 25
+      experience: 15
+      education: 10
+      preferred-skills: 5
   cors:
     # 开发环境前端来源（《系统架构设计》7.2）；
     # 生产环境与 API 同源部署，届时不应再开放跨域
