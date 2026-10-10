@@ -69,7 +69,7 @@
                   </td>
                   <td>Java后端简历 <span class="table__muted">v2</span></td>
                   <td>
-                    <span class="tag tag--ok">82.4</span>
+                    <span class="tag tag--brand">75.75</span>
                   </td>
                   <td class="table__muted">2026-10-09 14:25</td>
                   <td class="text-right">
@@ -190,7 +190,7 @@
         <label class="field__label">选择岗位<span class="req">*</span></label>
         <div class="item-list" style="border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden">
           <label class="item" style="cursor:pointer;padding:11px 14px">
-            <input type="radio" name="pick-job" checked style="accent-color:var(--brand-600)">
+            <input type="radio" name="pick-job" style="accent-color:var(--brand-600)">
             <div class="item__main">
               <div class="item__title">Java 后端开发实习生</div>
               <div class="item__meta">示例科技 · 分析版本 v1（基于旧版描述）</div>
@@ -198,7 +198,7 @@
             <span class="tag tag--warn">分析已过期</span>
           </label>
           <label class="item" style="cursor:pointer;padding:11px 14px">
-            <input type="radio" name="pick-job" style="accent-color:var(--brand-600)">
+            <input type="radio" name="pick-job" checked style="accent-color:var(--brand-600)">
             <div class="item__main">
               <div class="item__title">后端开发工程师（校招）</div>
               <div class="item__meta">云启信息 · 分析版本 v1</div>
@@ -206,7 +206,16 @@
             <span class="tag tag--ok">已分析</span>
           </label>
         </div>
-        <div class="field__hint">岗位描述更新过时，仍可匹配，但结果基于旧版要求；建议先重新分析岗位。</div>
+
+        <!-- 选中分析已过期的岗位时，就地拦截、不可提交（V1.3 R04），代替后端 400 -->
+        <div class="alert alert--warn mt-12">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>
+          <div class="alert__body">
+            <span class="alert__title">「Java 后端开发实习生」的分析已过期。</span>
+            <div class="small mt-8">岗位描述在分析后已更新，请先重新分析，再基于新版要求发起匹配。</div>
+            <button class="btn btn--sm mt-12">去重新分析</button>
+          </div>
+        </div>
       </div>
 
       <div class="alert">
