@@ -6,7 +6,9 @@ import { computed } from 'vue'
  *
  * 对应简历分析结果的 `skills[{ name, level, evidence }]`；等级语义色按
  * 「已体现」（有项目/经历支撑，绿）与「仅提及」（仅列出名称，黄）区分，其余为中性灰。
- * M6 的匹配报告会复用该组件的名称 + 等级呈现方式（匹配/部分匹配/未体现另行映射颜色）。
+ *
+ * 匹配报告（M6）用**本组件的等级色语义**但不套用组件：明细项结构为 `{ text, dimension }`
+ * （V1.3 R06），没有 name/level 字段，报告页直接渲染文本 + 维度标签即可。
  */
 const props = defineProps({
   name: { type: String, required: true },

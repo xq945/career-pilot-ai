@@ -48,7 +48,7 @@ const NAV_GROUPS = [
   {
     label: 'AI 分析与练习',
     items: [
-      { path: '/matches', text: '岗位匹配', icon: Aim, ready: false },
+      { path: '/matches', text: '岗位匹配', icon: Aim, ready: true },
       { path: '/interviews', text: 'AI 面试', icon: ChatLineSquare, ready: false },
     ],
   },

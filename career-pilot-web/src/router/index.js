@@ -62,6 +62,18 @@ const routes = [
         meta: { title: '岗位 AI 分析', group: '求职材料' },
       },
       {
+        path: 'matches',
+        name: 'matches',
+        component: () => import('@/views/MatchesView.vue'),
+        meta: { title: '岗位匹配', group: 'AI 分析与练习' },
+      },
+      {
+        path: 'matches/:id',
+        name: 'match-report',
+        component: () => import('@/views/MatchReportView.vue'),
+        meta: { title: '匹配报告', group: 'AI 分析与练习' },
+      },
+      {
         path: 'profile',
         name: 'profile',
         component: () => import('@/views/ProfileView.vue'),
