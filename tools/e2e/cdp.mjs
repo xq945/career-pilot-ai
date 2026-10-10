@@ -179,12 +179,18 @@ export async function connect({ port = 9222 } = {}) {
    *
    * 直接赋 `el.value` 对 Vue 的 v-model **无效** —— Vue 监听的是 input 事件，
    * 且它记录着自己的旧值。必须走原生 setter 再派发事件。
+   *
+   * 输入框与多行文本框的 value setter 在各自的 prototype 上（HTMLInputElement /
+   * HTMLTextAreaElement），用错原型会抛 "Illegal invocation"——故按元素类型取原型。
    */
   async function fill(index, value, selector = '.el-input__inner') {
     await evaluate(`(() => {
       const el = document.querySelectorAll(${JSON.stringify(selector)})[${index}]
       if (!el) throw new Error('找不到第 ${index} 个输入框')
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(value)})
+      const proto = el instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype
+      Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)})
       el.dispatchEvent(new Event('input', { bubbles: true }))
       el.dispatchEvent(new Event('change', { bubbles: true }))
       return true

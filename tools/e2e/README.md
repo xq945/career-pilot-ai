@@ -22,6 +22,9 @@
 | `profile-flow.mjs` | 个人中心用例（路由导航、昵称修改与即时同步、头像上传/替换/移除、双侧校验、页内退出） |
 | `fixtures.mjs` | 简历测试文件的**动态构造器**（DOCX/PDF/HTML/TXT，含中文；全在内存按格式规范拼装，零二进制入库）。也可单独运行 `node tools/e2e/fixtures.mjs --out ./tmp` 生成一组文件供 curl 验收使用 |
 | `resume-flow.mjs` | 简历管理用例（上传 DOCX/HTML/TXT/PDF、前端即时校验、服务端 415/400/413、删除三条后果与幂等、分页显隐与翻页） |
+| `analysis-flow.mjs` | 简历 AI 分析用例（入口跳转与确认、AiWaiting 等待态、结果渲染、**复用路径秒回且版本不变**、未分析空态、错误态）；**消耗真实模型 token** |
+| `resume-file-flow.mjs` | 简历原文件预览 / 下载用例（名称点击预览、下载图标、取回内容与上传原文一致、删除后 404） |
+| `job-flow.mjs` | 岗位模块用例（新建/编辑弹窗与校验、**三态标签**、改描述后立即「分析已过期」、过期重分析生成新版本、复用路径、删除）；**消耗 2 次真实模型调用** |
 
 ## 用法
 
@@ -31,6 +34,9 @@
 node tools/e2e/auth-flow.mjs
 node tools/e2e/profile-flow.mjs
 node tools/e2e/resume-flow.mjs
+node tools/e2e/analysis-flow.mjs      # 消耗真实模型 token
+node tools/e2e/resume-file-flow.mjs
+node tools/e2e/job-flow.mjs           # 消耗 2 次真实模型调用
 
 # 换地址
 node tools/e2e/auth-flow.mjs --base http://localhost:5173 --api http://localhost:8080/api
@@ -58,7 +64,9 @@ node tools/e2e/auth-flow.mjs --shots ./shots
 ## 写新用例时的坑
 
 - **给 `v-model` 输入框赋值必须走原生 setter + `input` 事件**，直接改 `el.value`
-  Vue 感知不到。`cdp.mjs` 的 `fill()` 已封装。
+  Vue 感知不到。`cdp.mjs` 的 `fill()` 已封装——它按**元素类型**取 value setter：
+  `<input>` 与 `<textarea>` 的 value 在各自的原型上，用错原型会抛
+  `TypeError: Illegal invocation`（填多行文本框须传 `.el-textarea__inner` 选择器）。
 - **已登录时导航到 `/login`、`/register` 会被守卫重定向**，脚本若以为能停在那一页，
   后续会在一个空 DOM 上操作、报出难以理解的错误。开跑前先 `localStorage.clear()`。
 - **Vue Router 不编码 query 中的 `/`**：实际是 `?redirect=/dashboard`，不是 `%2F`；
@@ -74,4 +82,7 @@ node tools/e2e/auth-flow.mjs --shots ./shots
   「弹窗是否打开/关闭」，要用可见性（如 `offsetParent !== null`）。
 - **页面内 fetch 与页面同源才有正确的 Origin**：跨域请求的 CORS 校验依赖 Origin，
   在 `about:blank` 上直接 evaluate fetch 会被拒；先 `goto` 到前端页面再发请求。
+- **`--shots` 截图前要等进入动画结束**：Element Plus 的 `el-tag` 等组件带
+  `el-zoom-in-center` 过渡（从缩小态放大），元素刚出现就截图会拍到被裁切/半透明的
+  中间态。`job-flow.mjs` 的 `shot()` 已封装"等没有标签处于 `enter-active`"再截图。
 - 每个用例**失败不中断**：`createChecker()` 会跑完全部断言再汇总，一次拿到所有问题。
