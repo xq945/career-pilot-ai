@@ -12,10 +12,14 @@
         DELETE /api/resumes/{id}            删除（逻辑删除 + 物理删除文件，幂等）
         POST   /api/resumes/{id}/analyze    发起分析（本页「分析」按钮，成功后跳转分析页）
         GET    /api/resumes/{id}/analysis   读取分析状态与结果
+        GET    /api/resumes/{id}/file       预览 / 下载原文件（?download=true 强制下载）
   边界：41300 文件过大、41500 类型不支持、400 文本提取失败（扫描件）——均以页内提示呈现，不上抛全局。
         列表接口每条记录含 analyzed 字段（API V1.3），「已分析 / 未分析」标签直接读它，
         无需逐条追加分析接口请求。
-        简历原文不提供预览与下载，故本页与详情页均无「查看原文」入口。
+        简历原文的预览与下载入口在列表项**名称**上：名称点击 = 预览（新标签打开），
+        名称右侧图标 = 下载（文件名取原始文件名 fileName）。
+        PDF / TXT / HTML 可在浏览器内预览，DOCX / DOC 无原生渲染能力、预览即下载；
+        HTML 一律按 text/plain 下发（防同源 XSS，见 API §4.7）。
 -->
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="stylesheet" href="assets/prototype.css">
@@ -69,7 +73,10 @@
               </div>
               <div class="item__main">
                 <div class="item__title">
-                  Java后端简历
+                  <a href="#" title="预览原文件（新标签打开）" style="color:var(--brand-600);border-bottom:1px dashed currentColor">Java后端简历</a>
+                  <button class="btn btn--sm" title="下载原文件" style="padding:2px 6px;line-height:0">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+                  </button>
                   <span class="tag tag--ok">已分析</span>
                 </div>
                 <div class="item__meta">PDF · 上传于 2026-10-09 14:20 · 分析版本 v2</div>
@@ -87,7 +94,10 @@
               </div>
               <div class="item__main">
                 <div class="item__title">
-                  通用版简历
+                  <a href="#" title="预览原文件（新标签打开）" style="color:var(--brand-600);border-bottom:1px dashed currentColor">通用版简历</a>
+                  <button class="btn btn--sm" title="下载原文件" style="padding:2px 6px;line-height:0">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+                  </button>
                   <span class="tag">未分析</span>
                 </div>
                 <div class="item__meta">DOCX · 上传于 2026-10-08 19:32</div>
@@ -104,7 +114,10 @@
               </div>
               <div class="item__main">
                 <div class="item__title">
-                  实习简历（旧）
+                  <a href="#" title="预览原文件（新标签打开）" style="color:var(--brand-600);border-bottom:1px dashed currentColor">实习简历（旧）</a>
+                  <button class="btn btn--sm" title="下载原文件" style="padding:2px 6px;line-height:0">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+                  </button>
                   <span class="tag tag--info"><span class="spinner" style="width:11px;height:11px;border-width:1.5px"></span>分析中</span>
                 </div>
                 <div class="item__meta">PDF · 上传于 2026-10-07 10:15 · 预计还需 20 秒</div>

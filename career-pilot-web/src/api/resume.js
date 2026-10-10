@@ -57,3 +57,19 @@ export function analyzeResume(id) {
 export function getResumeAnalysis(id) {
   return request.get(`/resumes/${id}/analysis`)
 }
+
+/**
+ * 获取简历原文件（4.7）：预览（download=false）或下载（download=true）。
+ *
+ * 该接口的响应体是**文件二进制**（全项目唯一的非 JSON 成功响应），故用
+ * `responseType: 'blob'` 接收；失败时后端仍返回统一结构的 JSON，
+ * 由 request.js 的 normalizeErrorAsync 还原为业务错误（见那里的注释）。
+ *
+ * 原文按私有文件处理：带 JWT 经 /api 下发，不走 /uploads 静态路径。
+ */
+export function fetchResumeFile(id, { download = false } = {}) {
+  return request.get(`/resumes/${id}/file`, {
+    params: { download },
+    responseType: 'blob',
+  })
+}

@@ -82,6 +82,30 @@ function normalizeError(error) {
   }
 }
 
+/**
+ * blob 请求（如简历文件下载）出错时，响应体被 axios 按响应类型解析成 Blob，
+ * 而它内部其实是统一结构的 JSON——先读回文本再解析，否则业务错误码与文案会丢失
+ * （表现为只有「请求失败（HTTP 404）」）。
+ */
+async function parseBlobBody(blob) {
+  try {
+    const body = JSON.parse(await blob.text())
+    return body && typeof body === 'object' ? body : null
+  }
+  catch {
+    return null
+  }
+}
+
+/** 错误规范化的异步版本：仅多一步 Blob 响应体的还原，其余走同步逻辑 */
+async function normalizeErrorAsync(error) {
+  const response = error?.response
+  if (response && response.data instanceof Blob) {
+    return normalizeError({ ...error, response: { ...response, data: await parseBlobBody(response.data) } })
+  }
+  return normalizeError(error)
+}
+
 // 请求拦截器：携带 JWT
 request.interceptors.request.use((config) => {
   const token = readToken()
@@ -108,8 +132,8 @@ request.interceptors.response.use(
     // 非统一结构（理论上后端不会返回）
     return body
   },
-  (error) => {
-    const apiError = normalizeError(error)
+  async (error) => {
+    const apiError = await normalizeErrorAsync(error)
 
     // 401 且不是登录/注册请求 → 说明 Token 失效（过期、被篡改、后端换了密钥）。
     // 清除本地凭据并交给应用层跳转登录页（《前端原型设计》7.1）。

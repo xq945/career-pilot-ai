@@ -2,10 +2,10 @@
 import { h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Plus, UploadFilled } from '@element-plus/icons-vue'
+import { Document, Download, Plus, UploadFilled } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 
-import { listResumes, removeResume, uploadResume } from '@/api/resume'
+import { fetchResumeFile, listResumes, removeResume, uploadResume } from '@/api/resume'
 import AnalysisStateTag from '@/components/AnalysisStateTag.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import StateBlock from '@/components/StateBlock.vue'
@@ -36,6 +36,57 @@ function openAnalysis(item, auto = false) {
     params: { id: item.id },
     query: auto ? { auto: '1' } : {},
   })
+}
+
+/* ---------------------------------------------------------------- 原文件（预览 / 下载） */
+
+/** 正在读取文件的简历 id（同一时刻只允许一个请求，防连点） */
+const fileLoadingId = ref(null)
+
+/** 预览原文件：新标签打开。PDF/TXT/HTML 可内嵌渲染，DOCX/DOC 无此能力、浏览器会转为下载。 */
+function previewFile(item) {
+  return openFile(item, false)
+}
+
+/** 下载原文件：文件名取原始文件名（`fileName` 含扩展名）。 */
+function downloadFile(item) {
+  return openFile(item, true)
+}
+
+/**
+ * 取文件并交付给浏览器。
+ *
+ * 接口响应是文件二进制（非统一响应结构），拿到的是 Blob，因此不能用 URL 直接打开
+ * （那样带不上 Authorization 头），而是先经 axios 取回、再转成 blob URL 使用。
+ */
+async function openFile(item, download) {
+  if (fileLoadingId.value !== null) {
+    return
+  }
+  fileLoadingId.value = item.id
+  try {
+    const blob = await fetchResumeFile(item.id, { download })
+    const url = URL.createObjectURL(blob)
+    if (download) {
+      const link = document.createElement('a')
+      link.href = url
+      link.download = item.fileName || item.name
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+    }
+    else {
+      window.open(url, '_blank')
+    }
+    // 延迟释放：过早 revoke 会让刚打开的新标签页（或正在写入的下载）读不到内容
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  }
+  catch (error) {
+    ElMessage.error(error.message || '文件获取失败，请稍后重试')
+  }
+  finally {
+    fileLoadingId.value = null
+  }
 }
 
 /** 与后端三重校验同规则的客户端预检（仅为体验拦截，权威校验在服务端） */
@@ -269,7 +320,18 @@ async function handleDelete(item) {
             </div>
             <div class="item__main">
               <div class="item__title">
-                <span class="item__name">{{ item.name }}</span>
+                <a
+                  class="item__name item__name--link"
+                  title="预览原文件（新标签打开）"
+                  @click.prevent="previewFile(item)"
+                >{{ item.name }}</a>
+                <el-button
+                  link
+                  :icon="Download"
+                  :loading="fileLoadingId === item.id"
+                  title="下载原文件"
+                  @click="downloadFile(item)"
+                />
                 <AnalysisStateTag :analyzed="item.analyzed" />
               </div>
               <div class="item__meta">
@@ -486,6 +548,17 @@ async function handleDelete(item) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 名称 = 原文件预览入口（API §4.7）；虚线下划线示意可点击 */
+.item__name--link {
+  cursor: pointer;
+  color: var(--brand-600);
+  border-bottom: 1px dashed currentColor;
+}
+
+.item__name--link:hover {
+  border-bottom-style: solid;
 }
 
 .item__meta {
