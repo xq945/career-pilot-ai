@@ -38,6 +38,12 @@ const routes = [
         meta: { title: '仪表盘', group: '总览' },
       },
       {
+        path: 'resumes',
+        name: 'resumes',
+        component: () => import('@/views/ResumesView.vue'),
+        meta: { title: '简历管理', group: '求职材料' },
+      },
+      {
         path: 'profile',
         name: 'profile',
         component: () => import('@/views/ProfileView.vue'),

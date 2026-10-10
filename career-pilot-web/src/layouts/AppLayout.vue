@@ -40,7 +40,7 @@ const NAV_GROUPS = [
   {
     label: '求职材料',
     items: [
-      { path: '/resumes', text: '简历管理', icon: Document, ready: false },
+      { path: '/resumes', text: '简历管理', icon: Document, ready: true },
       { path: '/jobs', text: '岗位管理', icon: Briefcase, ready: false },
     ],
   },
