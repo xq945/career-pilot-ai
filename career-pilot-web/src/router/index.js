@@ -50,6 +50,18 @@ const routes = [
         meta: { title: '简历 AI 分析', group: '求职材料' },
       },
       {
+        path: 'jobs',
+        name: 'jobs',
+        component: () => import('@/views/JobsView.vue'),
+        meta: { title: '岗位管理', group: '求职材料' },
+      },
+      {
+        path: 'jobs/:id/analysis',
+        name: 'job-analysis',
+        component: () => import('@/views/JobAnalysisView.vue'),
+        meta: { title: '岗位 AI 分析', group: '求职材料' },
+      },
+      {
         path: 'profile',
         name: 'profile',
         component: () => import('@/views/ProfileView.vue'),
