@@ -18,6 +18,12 @@
  *   node tools/seed/demo-data.mjs --analyses 0 --job-analyses 0   # 只造数据不调模型（不消耗 token）
  *   node tools/seed/demo-data.mjs --analyses 4             # 简历全部做分析
  *   node tools/seed/demo-data.mjs --job-analyses 1         # 岗位只做「已分析」，跳过「过期」的演示数据
+ *   node tools/seed/demo-data.mjs --matches 2 --interviews 1      # 再预置 2 条匹配记录与 1 场已完成的面试
+ *
+ * --matches / --interviews（M9 加入，默认 0 不改变原行为）：为**仪表盘**补上简历/岗位之外的
+ * 演示数据——匹配记录、能力差距与面试计数，使准备清单六步接近全亮。匹配用第一份已分析的简历
+ * 与第一个未过期的已分析岗位（要求 --analyses ≥ 1 且 --job-analyses ≥ 1）；面试为 1 题会话，
+ * 作答至完成（含总分与总评）。
  */
 import { buildDocx, buildHtml, buildPdf, buildTxt } from '../e2e/fixtures.mjs'
 
@@ -38,6 +44,16 @@ const ANALYSES = Number(argValue('analyses', '2'))
 
 /** 岗位做真实分析的份数（0 = 全部不分析；1 = 仅「已分析」；2 = 再含一份「分析已过期」） */
 const JOB_ANALYSES = Number(argValue('job-analyses', '2'))
+
+/** 预置的匹配记录条数（0 = 不预置）——供仪表盘的「最近匹配 / 能力差距概览」有数据 */
+const MATCHES = Number(argValue('matches', '0'))
+
+/** 预置的已完成面试场数（0 = 不预置）——供仪表盘的面试计数与准备清单第 6 步 */
+const INTERVIEWS = Number(argValue('interviews', '0'))
+
+/** 预置面试的回答文本（1 题会话，作答至完成） */
+const INTERVIEW_ANSWER = '我会先用 STAR 结构讲清项目背景与我承担的具体职责，再展开技术选型与遇到的难点，'
+  + '最后给出可量化的结果与反思。遇到不确定的问题会说明思路边界，而不是硬编一个答案。'
 
 // ---------------------------------------------------------------- 简历素材
 
@@ -330,6 +346,48 @@ async function analyzeJob(token, id) {
   return body.data
 }
 
+/** 创建匹配记录（每次调用新增一条，保留历史；要求双方都有未过期的分析） */
+async function createMatch(token, resumeId, jobId) {
+  const body = await api('/matches', {
+    method: 'POST',
+    token,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resumeId, jobId }),
+  })
+  if (body.code !== 0) {
+    throw new Error(`创建匹配失败：${body.message}`)
+  }
+  return body.data
+}
+
+/** 创建面试会话（题目随会话一次性生成） */
+async function createInterview(token, jobId, title, questionCount) {
+  const body = await api('/interviews', {
+    method: 'POST',
+    token,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jobId, title, questionType: 'MIXED', questionCount }),
+  })
+  if (body.code !== 0) {
+    throw new Error(`创建面试失败：${body.message}`)
+  }
+  return body.data
+}
+
+/** 提交某题的回答（自动触发评价；最后一题还会生成总分与总评） */
+async function answerQuestion(token, sessionId, questionId, answer) {
+  const body = await api(`/interviews/${sessionId}/questions/${questionId}/answer`, {
+    method: 'POST',
+    token,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answer }),
+  })
+  if (body.code !== 0) {
+    throw new Error(`提交回答失败：${body.message}`)
+  }
+  return body.data
+}
+
 // ---------------------------------------------------------------- 主流程
 
 console.log(`目标后端：${API}`)
@@ -392,6 +450,51 @@ for (const job of JOBS) {
   console.log(`  ✓ id=${id}  ${job.company} · ${job.name}  —— ${info}`)
 }
 
+// ---------------------------------------------------------------- 匹配记录（可选，供仪表盘）
+
+/** 第一份「已分析」的简历与第一个「未过期」的已分析岗位（过期岗位的 info 以「分析已过期」开头，不会被选中） */
+const analyzedResume = created.find((item) => item.analysisInfo.startsWith('已分析'))
+const analyzedJob = createdJobs.find((item) => item.info.startsWith('已分析'))
+
+let matchCount = 0
+if (MATCHES > 0) {
+  console.log('\n匹配记录（预置）：')
+  if (!analyzedResume || !analyzedJob) {
+    console.log('  ⚠ 缺少已分析（未过期）的简历或岗位，跳过匹配预置——请保证 --analyses ≥ 1 且 --job-analyses ≥ 1')
+  }
+  else {
+    for (let i = 0; i < MATCHES; i++) {
+      const started = Date.now()
+      const match = await createMatch(token, analyzedResume.id, analyzedJob.id)
+      matchCount++
+      console.log(`  ✓ id=${match.id}  「${match.jobName}」×「${match.resumeName}」 —— ${match.matchScore} 分`
+        + `（${((Date.now() - started) / 1000).toFixed(1)}s）`)
+    }
+  }
+}
+
+// ---------------------------------------------------------------- 模拟面试（可选，供仪表盘）
+
+let interviewCount = 0
+if (INTERVIEWS > 0) {
+  console.log('\n模拟面试（预置已完成场次）：')
+  const jobId = analyzedJob?.id ?? createdJobs[0]?.id
+  if (!jobId) {
+    console.log('  ⚠ 没有可用的岗位，跳过面试预置')
+  }
+  else {
+    const jobName = createdJobs.find((item) => item.id === jobId)?.name ?? '岗位'
+    for (let i = 0; i < INTERVIEWS; i++) {
+      const started = Date.now()
+      const session = await createInterview(token, jobId, `${jobName}模拟面试`, 1)
+      await answerQuestion(token, session.id, session.questions[0].id, INTERVIEW_ANSWER)
+      interviewCount++
+      console.log(`  ✓ id=${session.id}  1 题已作答完成（含总分与总评，${((Date.now() - started) / 1000).toFixed(1)}s）`)
+    }
+  }
+}
+
 console.log(`\n完成：${created.length} 份简历（${Math.min(ANALYSES, RESUMES.length)} 份已分析）`
-  + ` + ${createdJobs.length} 个岗位（覆盖未分析 / 已分析 / 分析已过期三态）。`)
+  + ` + ${createdJobs.length} 个岗位（覆盖未分析 / 已分析 / 分析已过期三态）`
+  + ` + ${matchCount} 条匹配记录 + ${interviewCount} 场已完成面试。`)
 console.log(`登录演示账号：${ACCOUNT} / ${PASSWORD}`)
