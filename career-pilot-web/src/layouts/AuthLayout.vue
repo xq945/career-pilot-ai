@@ -12,9 +12,9 @@ import BrandMark from '@/components/BrandMark.vue'
  */
 const FEATURES = [
   { icon: Document, text: '简历智能分析：技能、经历、优势与改进建议' },
-  { icon: Aim, text: '岗位匹配：五维评分与可追溯的匹配证据' },
+  { icon: Aim, text: '简历定向优化：按目标岗位改写简历，逐项可查、事实不变' },
   { icon: ChatLineSquare, text: '模拟面试：按岗位出题、逐题评分与参考答案' },
-  { icon: ChatDotRound, text: '求职智能体：用对话完成分析与匹配，过程可追溯' },
+  { icon: ChatDotRound, text: '求职智能体：用对话完成分析与优化，过程可追溯' },
 ]
 </script>
 
@@ -29,7 +29,7 @@ const FEATURES = [
       <div>
         <h1 class="auth__headline">让 AI 帮你把求职准备<br />做得更扎实</h1>
         <p class="auth__sub">
-          基于 Spring AI 与 DeepSeek 的智能体应用。从简历诊断到岗位匹配，再到模拟面试，
+          基于 Spring AI 与 DeepSeek 的智能体应用。从简历诊断到简历定向优化，再到模拟面试，
           把每一步都变成有依据的改进建议。
         </p>
 
@@ -50,7 +50,6 @@ const FEATURES = [
       <div class="auth__card">
         <slot />
 
-        <p class="auth__note">登录状态保存在浏览器本地，简历与岗位数据仅本人可见</p>
       </div>
     </section>
   </div>

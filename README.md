@@ -2,7 +2,7 @@
 
 基于 Spring AI 的智能体应用开发。
 
-面向个人求职者，提供简历管理、岗位管理、简历与岗位匹配、AI 面试和求职智能体等功能。
+面向个人求职者，提供简历管理、岗位管理、简历定向优化、AI 面试和求职智能体等功能。
 
 ## 技术栈
 
@@ -47,11 +47,12 @@ career-pilot-ai/
 | M7 | 面试模块（出题 / 评价 / 报告与总评） | 已完成 |
 | M8 | 求职智能体（工具调用 + 对话与会话记录） | 已完成 |
 | M9 | 聚合与收尾（仪表盘实装 + 全链路验收与安全专项） | 已完成 |
+| M11 | 简历定向优化（匹配内核 + 按岗位改写简历 + 编辑/评估/DOCX 导出） | 已完成 |
 
 演示数据一键就绪（仪表盘准备清单六步全亮）：
 
 ```bash
-node tools/seed/demo-data.mjs --matches 2 --interviews 1   # 账号 demo / demo1234
+node tools/seed/demo-data.mjs --matches 2 --optimizations 1 --interviews 1   # 账号 demo / demo1234
 ```
 
 ## 快速开始

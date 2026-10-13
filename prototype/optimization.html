@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>简历定向优化 · 智能求职辅助平台</title>
+<!--
+  页面：简历定向优化（优化记录列表 + 新建优化）
+  路由：/optimizations
+  接口：POST /api/optimizations              创建优化（body: resumeId, jobId；同步，典型 25–80 秒）
+        GET  /api/optimizations?page&size   优化记录列表（每行内联 resumeName / jobName / companyName）
+        手动输入 JD 时由前端编排三步：POST /api/jobs（建岗位）
+                                    → POST /api/jobs/{id}/analyze（分析岗位）
+                                    → POST /api/optimizations（生成优化稿），进度分步可见
+  关键业务规则：
+    1. 优化不覆盖原始简历：每次优化新增一条记录（同一简历+岗位按版本号 v1、v2…递增），
+       不覆盖历史；优化只改表述、不新增事实，缺失信息以「待确认问题」返回给用户补充。
+    2. 简历与岗位都必须「已完成 AI 分析」且岗位分析未过期，否则接口返回 400 ——
+       本页在提交前做前置校验，把后端 400 提前到交互层，避免用户白等一次模型调用。
+    3. 匹配分数由后端按固定权重计算，模型只负责改写与解释、无分数可给，因此前端不可编辑分数；
+       分数反映简历与岗位描述之间的信息匹配程度，不得表述为录用概率。
+    4. 分数语义色：≥80 绿 / 60–79 蓝 / <60 橙；未评估时「优化后」显示「待评估」。
+    5. 列表中的简历名、岗位名与公司名由接口内联返回（口径同匹配列表），前端无需反查资源；
+       源资源被逻辑删除后名称依然返回，仅在其入口标注「已删除」。
+-->
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body data-page="optimization" data-crumb="AI 分析与练习 / <b>简历定向优化</b>">
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+
+    <div class="content">
+      <div class="content__inner">
+
+        <div class="page-head">
+          <div class="page-head__text">
+            <h1>简历定向优化</h1>
+            <p class="page-head__desc">按目标岗位改写简历：事实不变、逐项可查、可编辑可导出</p>
+          </div>
+          <div class="page-head__actions">
+            <button class="btn btn--primary" data-modal-open="md-create">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              新建简历优化
+            </button>
+          </div>
+        </div>
+
+        <!-- ===== 优化记录 ===== -->
+        <div class="card">
+          <div class="card__head">
+            <h2>优化记录</h2>
+            <span class="card__sub">每次优化新增一条记录、不覆盖历史；「待评估」表示优化稿尚未重新评分</span>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>目标岗位</th>
+                  <th>使用简历</th>
+                  <th>匹配度对比</th>
+                  <th>版本</th>
+                  <th>时间</th>
+                  <th class="text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div class="table__primary">Java 后端开发实习生</div>
+                    <div class="table__muted">示例科技</div>
+                  </td>
+                  <td>Java后端简历</td>
+                  <td>
+                    <span class="tag tag--brand">75.75</span>
+                    <span class="muted" style="margin:0 4px">→</span>
+                    <span class="tag tag--ok">82.5</span>
+                  </td>
+                  <td class="table__muted">v2</td>
+                  <td class="table__muted">2026-10-13 15:04</td>
+                  <td class="text-right">
+                    <a class="btn btn--sm" href="optimization-report.html">打开工作台</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="table__primary">后端开发工程师（校招）</div>
+                    <div class="table__muted">云启信息</div>
+                  </td>
+                  <td>Java后端简历</td>
+                  <td>
+                    <span class="tag tag--brand">68.0</span>
+                    <span class="muted" style="margin:0 4px">→</span>
+                    <span class="tag">待评估</span>
+                  </td>
+                  <td class="table__muted">v1</td>
+                  <td class="table__muted">2026-10-12 21:05</td>
+                  <td class="text-right">
+                    <a class="btn btn--sm" href="optimization-report.html">打开工作台</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="table__primary">Java 后端开发实习生</div>
+                    <div class="table__muted">示例科技</div>
+                  </td>
+                  <td>
+                    通用版简历
+                    <!-- 关联简历已删除的呈现：仍可查看工作台，但不可跳转源简历 -->
+                    <span class="tag tag--danger">关联简历已删除</span>
+                  </td>
+                  <td>
+                    <span class="tag tag--warn">52.5</span>
+                    <span class="muted" style="margin:0 4px">→</span>
+                    <span class="tag tag--brand">61.0</span>
+                  </td>
+                  <td class="table__muted">v1</td>
+                  <td class="table__muted">2026-10-11 16:42</td>
+                  <td class="text-right">
+                    <a class="btn btn--sm" href="optimization-report.html">打开工作台</a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 空态 -->
+          <!--
+          <div class="empty">
+            <div class="empty__icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+            </div>
+            <h3>还没有优化记录</h3>
+            <p>选择一份已分析的简历和一个已分析的岗位，系统会按岗位要求改写简历、逐项说明改动，并给出优化前后的匹配度对比。</p>
+            <button class="btn btn--primary" data-modal-open="md-create">新建简历优化</button>
+          </div>
+          -->
+
+          <div class="card__foot">
+            <div class="pagination">
+              <span class="pagination__info">共 5 条</span>
+              <button class="pagination__btn" disabled>‹</button>
+              <button class="pagination__btn is-active">1</button>
+              <button class="pagination__btn">2</button>
+              <button class="pagination__btn">›</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 新建简历优化 ===== -->
+<div class="overlay" id="md-create" style="display:none">
+  <div class="modal modal--wide">
+    <div class="modal__head">
+      <div style="flex:1">
+        <h2>新建简历优化</h2>
+        <p class="small muted mt-8">选择一份已分析的简历与目标岗位，系统会按岗位要求改写简历并逐项说明改动</p>
+      </div>
+      <button class="modal__close" data-modal-close>×</button>
+    </div>
+    <div class="modal__body">
+
+      <!-- 步骤 1：选择简历 -->
+      <div class="field">
+        <label class="field__label">选择简历<span class="req">*</span></label>
+        <div class="item-list" style="border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden">
+          <label class="item" style="cursor:pointer;padding:11px 14px">
+            <input type="radio" name="pick-resume" checked style="accent-color:var(--brand-600)">
+            <div class="item__main">
+              <div class="item__title">Java后端简历</div>
+              <div class="item__meta">PDF · 分析版本 v2</div>
+            </div>
+            <span class="tag tag--ok">已分析</span>
+          </label>
+          <label class="item" style="cursor:pointer;padding:11px 14px">
+            <input type="radio" name="pick-resume" style="accent-color:var(--brand-600)">
+            <div class="item__main">
+              <div class="item__title">通用版简历</div>
+              <div class="item__meta">DOCX · 尚未分析</div>
+            </div>
+            <span class="tag">未分析</span>
+          </label>
+        </div>
+
+        <!-- 选中未分析的资源时，就地给出阻断提示，代替后端 400 -->
+        <div class="alert alert--warn mt-12">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>
+          <div class="alert__body">
+            <span class="alert__title">「通用版简历」还没有完成分析。</span>
+            <div class="small mt-8">优化需要该简历的分析结果作为改写依据，请先完成分析。</div>
+            <a class="btn btn--sm mt-12" href="resume-analysis.html">立即分析这份简历</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步骤 2：选择目标岗位（两个页签：选择已有岗位 / 手动输入 JD） -->
+      <div class="field">
+        <label class="field__label">目标岗位<span class="req">*</span></label>
+        <div class="btn-group mb-12">
+          <button class="btn btn--sm is-active" data-switch="jtabs" data-switch-target="pick">选择已有岗位</button>
+          <button class="btn btn--sm" data-switch="jtabs" data-switch-target="input">手动输入 JD</button>
+        </div>
+
+        <!-- 页签一：选择已有岗位 -->
+        <div data-switch-panel="jtabs" data-switch-target="pick">
+          <div class="item-list" style="border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden">
+            <label class="item" style="cursor:pointer;padding:11px 14px">
+              <input type="radio" name="pick-job" style="accent-color:var(--brand-600)">
+              <div class="item__main">
+                <div class="item__title">Java 后端开发实习生</div>
+                <div class="item__meta">示例科技 · 分析版本 v1（基于旧版描述）</div>
+              </div>
+              <span class="tag tag--warn">分析已过期</span>
+            </label>
+            <label class="item" style="cursor:pointer;padding:11px 14px">
+              <input type="radio" name="pick-job" checked style="accent-color:var(--brand-600)">
+              <div class="item__main">
+                <div class="item__title">后端开发工程师（校招）</div>
+                <div class="item__meta">云启信息 · 分析版本 v1</div>
+              </div>
+              <span class="tag tag--ok">已分析</span>
+            </label>
+          </div>
+
+          <!-- 选中分析已过期的岗位时，就地拦截、不可提交，代替后端 400 -->
+          <div class="alert alert--warn mt-12">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>
+            <div class="alert__body">
+              <span class="alert__title">「Java 后端开发实习生」的分析已过期。</span>
+              <div class="small mt-8">岗位描述在分析后已更新，请先重新分析，再基于最新要求优化简历。</div>
+              <a class="btn btn--sm mt-12" href="job-analysis.html">去重新分析</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- 页签二：手动输入 JD（提交时由前端编排：建岗位 → 分析岗位 → 生成优化） -->
+        <div data-switch-panel="jtabs" data-switch-target="input" class="is-hidden">
+          <div class="alert mb-16">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+            <div>提交后系统会<strong>自动创建岗位并完成分析</strong>，再基于新岗位生成优化稿；进度分三步可见（创建岗位 → 分析岗位 → 生成优化）。</div>
+          </div>
+          <div class="field">
+            <label class="field__label">岗位名称<span class="req">*</span></label>
+            <input class="input" type="text" placeholder="如：Java 后端开发工程师">
+          </div>
+          <div class="field">
+            <label class="field__label">公司名称</label>
+            <input class="input" type="text" placeholder="选填，如：示例科技">
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label class="field__label">JD 文本<span class="req">*</span></label>
+            <textarea class="textarea" placeholder="粘贴招聘网站的岗位描述原文，无需整理格式"></textarea>
+            <div class="counter">0 / 10000</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        <div>每次优化<strong>新增一条记录、不覆盖历史</strong>；优化只改表述、不新增事实，缺失信息会以「待确认问题」列出供你补充。</div>
+      </div>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-modal-close>取消</button>
+      <button class="btn btn--primary" data-modal-open="md-generating">开始优化</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 优化生成中 ===== -->
+<div class="overlay" id="md-generating" style="display:none">
+  <div class="modal">
+    <div class="modal__head"><h2>正在生成优化报告</h2></div>
+    <div class="modal__body">
+      <div class="row mb-12"><span class="spinner"></span><span class="strong">正在比对岗位要求并改写简历…</span></div>
+      <p class="small muted">生成优化稿通常需要 30–90 秒；中途关闭不影响结果，完成后可在列表里打开工作台查看。</p>
+      <div class="divider"></div>
+      <div class="skeleton mb-8" style="width:90%"></div>
+      <div class="skeleton mb-8" style="width:76%"></div>
+      <div class="skeleton" style="width:64%"></div>
+      <div class="alert alert--danger mt-16">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>
+        <div><span class="alert__title">失败态（50200）：</span>模型服务暂时不可用，本次未生成任何记录，可直接重试。</div>
+      </div>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-modal-close>关闭</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/prototype.js"></script>
+</body>
+</html>

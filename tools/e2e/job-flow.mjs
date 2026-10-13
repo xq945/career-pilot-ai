@@ -5,10 +5,10 @@
  * 新建 / 编辑弹窗（含校验拦截）、三态标签（未分析 / 已分析 / **分析已过期**）、
  * 发起分析（跳转 + 确认 + AiWaiting 等待态 + 结果渲染）、
  * **改描述后列表与详情立即变「分析已过期」**、过期状态下重新分析生成新版本、
- * 复用路径（描述未变 → 秒回且版本不变）、stale 警告条与降对比度、删除确认与空态。
+ * 描述未变重新分析同样生成新版本（2026-10-13 起不复用）、stale 警告条与降对比度、删除确认与空态。
  *
  * 接口层的 stale 三态、50200/50201 与越权矩阵由 curl 验证（见《验证记录》§7.1），
- * 本脚本只补浏览器独有的部分。**本脚本会消耗真实模型 token（两次完整分析）**。
+ * 本脚本只补浏览器独有的部分。**本脚本会消耗真实模型 token（三次完整分析）**。
  *
  * 前置条件：后端（8080，真实 API Key）与前端 dev server（5173）都已启动。
  *
@@ -262,8 +262,8 @@ try {
 
   await page.waitFor(MESSAGE_BOX_VISIBLE, { label: '自动弹出确认框', timeout: 15000 })
   const confirmText = await messageBoxText()
-  check('   进入后自动弹出确认框且说明耗时与复用机制',
-    confirmText.includes('10–30 秒') && confirmText.includes('复用'),
+  check('   进入后自动弹出确认框且说明耗时',
+    confirmText.includes('10–30 秒'),
     confirmText.replace(/\s+/g, ' ').slice(0, 60))
 
   await clickMessageBoxConfirm()
@@ -372,19 +372,18 @@ try {
       .includes('已分析'))
   await shot('08-analysis-refreshed')
 
-  // ------------------------------------------------------------ ⑦ 复用路径（描述未变 → 秒回）
+  // ------------------------------------------------------------ ⑦ 描述未变重新分析（生成新版本）
 
-  const reuseStart = Date.now()
   await clickPageButton('重新分析')
   await page.waitFor(MESSAGE_BOX_VISIBLE, { label: '重新分析确认框', timeout: 10000 })
   await clickMessageBoxConfirm()
-  await page.waitFor(`!(${MESSAGE_BOX_VISIBLE})`, { label: '确认框关闭', timeout: 15000 })
-  await sleep(500)
-  const reuseElapsed = Date.now() - reuseStart
+  await page.waitFor(`!!document.querySelector('.ai-waiting')`, { label: '等待态出现', timeout: 10000 })
+  await page.waitFor(`!document.querySelector('.ai-waiting')`, { label: '等待态消失', timeout: ANALYSIS_TIMEOUT })
+
   const sideTextReuse = await page.textOf('.layout__side')
-  check('⑧ 描述未变时重新分析：秒回且版本仍为 v2（后端复用，未调模型）',
-    reuseElapsed < 10000 && sideTextReuse.includes('v2'), `${reuseElapsed}ms`)
-  check('   全局提示如实说明「已复用」', await hasMessage('已复用'))
+  check('⑧ 描述未变时重新分析：生成新版本 v3（不再复用）',
+    sideTextReuse.includes('v3'), sideTextReuse.replace(/\s+/g, ' ').slice(0, 60))
+  check('   全局提示如实说明「分析完成」', await hasMessage('分析完成'))
 
   // ------------------------------------------------------------ ⑧ 删除（确认文案 + 空态）
 

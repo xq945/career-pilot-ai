@@ -2,7 +2,7 @@
 import { h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Download, Plus, UploadFilled } from '@element-plus/icons-vue'
+import { Document, Plus, UploadFilled } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 
 import { fetchResumeFile, listResumes, removeResume, uploadResume } from '@/api/resume'
@@ -14,7 +14,7 @@ import StateBlock from '@/components/StateBlock.vue'
  * 简历管理（《前端原型设计》§5.3，接口《API接口设计》4.1–4.6）。
  *
  * 页面内容：列表（加载 / 空 / 错误 / 正常四态）+ 上传对话框 + 删除二次确认
- * + 分析入口（M4）。
+ * + 分析入口（M4）+ 原文件下载（V1.12 起为唯一文件入口）。
  *
  * 分析入口不在此页发起：统一跳转到分析页（`/resumes/:id/analysis`，带 `?auto=1` 自动发起），
  * 等待态、失败态与重试只实现一处（原型 §6.3 的流程：列表 → 分析页 → 等待 → 结果）。
@@ -38,47 +38,34 @@ function openAnalysis(item, auto = false) {
   })
 }
 
-/* ---------------------------------------------------------------- 原文件（预览 / 下载） */
+/* ---------------------------------------------------------------- 原文件下载 */
 
-/** 正在读取文件的简历 id（同一时刻只允许一个请求，防连点） */
+/** 正在下载的简历 id（同一时刻只允许一个请求，防连点） */
 const fileLoadingId = ref(null)
 
-/** 预览原文件：新标签打开。PDF/TXT/HTML 可内嵌渲染，DOCX/DOC 无此能力、浏览器会转为下载。 */
-function previewFile(item) {
-  return openFile(item, false)
-}
-
-/** 下载原文件：文件名取原始文件名（`fileName` 含扩展名）。 */
-function downloadFile(item) {
-  return openFile(item, true)
-}
-
 /**
- * 取文件并交付给浏览器。
+ * 下载原文件（唯一入口：右侧操作列的「下载」按钮）；文件名取原始文件名（`fileName` 含扩展名）。
  *
- * 接口响应是文件二进制（非统一响应结构），拿到的是 Blob，因此不能用 URL 直接打开
- * （那样带不上 Authorization 头），而是先经 axios 取回、再转成 blob URL 使用。
+ * 名称不作为文件入口（V1.12 起为纯文本）。V1.13 曾把「预览」作为操作列按钮加回，
+ * 当日按用户要求回退（见《前端原型设计》V1.13），故此处只有下载一个动作。
  */
-async function openFile(item, download) {
+async function downloadFile(item) {
   if (fileLoadingId.value !== null) {
     return
   }
   fileLoadingId.value = item.id
   try {
-    const blob = await fetchResumeFile(item.id, { download })
+    // 接口响应是文件二进制（非统一响应结构），拿到的是 Blob，因此不能用 URL 直接打开
+    // （那样带不上 Authorization 头），而是先经 axios 取回、再转成 blob URL 触发下载。
+    const blob = await fetchResumeFile(item.id)
     const url = URL.createObjectURL(blob)
-    if (download) {
-      const link = document.createElement('a')
-      link.href = url
-      link.download = item.fileName || item.name
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-    }
-    else {
-      window.open(url, '_blank')
-    }
-    // 延迟释放：过早 revoke 会让刚打开的新标签页（或正在写入的下载）读不到内容
+    const link = document.createElement('a')
+    link.href = url
+    link.download = item.fileName || item.name
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    // 延迟释放：过早 revoke 会让正在写入的下载读不到内容
     setTimeout(() => URL.revokeObjectURL(url), 60000)
   }
   catch (error) {
@@ -270,7 +257,7 @@ async function handleDelete(item) {
       <div>
         <h1>简历管理</h1>
         <p class="page-head__desc">
-          上传 PDF、DOCX、DOC、HTML 或 TXT 简历，系统提取文本后用于 AI 分析与岗位匹配
+          上传 PDF、DOCX、DOC、HTML 或 TXT 简历，系统提取文本后用于 AI 分析与简历定向优化
         </p>
       </div>
       <el-button type="primary" :icon="Plus" @click="openUpload">
@@ -306,7 +293,7 @@ async function handleDelete(item) {
         <template #empty>
           <h3 class="state__title">还没有简历</h3>
           <p class="state__text">
-            上传一份 PDF、DOCX、DOC、HTML 或 TXT 简历，系统会自动提取文本，用于 AI 分析与岗位匹配。
+            上传一份 PDF、DOCX、DOC、HTML 或 TXT 简历，系统会自动提取文本，用于 AI 分析与简历定向优化。
           </p>
           <el-button type="primary" @click="openUpload">
             上传简历
@@ -320,18 +307,7 @@ async function handleDelete(item) {
             </div>
             <div class="item__main">
               <div class="item__title">
-                <a
-                  class="item__name item__name--link"
-                  title="预览原文件（新标签打开）"
-                  @click.prevent="previewFile(item)"
-                >{{ item.name }}</a>
-                <el-button
-                  link
-                  :icon="Download"
-                  :loading="fileLoadingId === item.id"
-                  title="下载原文件"
-                  @click="downloadFile(item)"
-                />
+                <span class="item__name">{{ item.name }}</span>
                 <AnalysisStateTag :analyzed="item.analyzed" />
               </div>
               <div class="item__meta">
@@ -339,6 +315,14 @@ async function handleDelete(item) {
               </div>
             </div>
             <div class="item__actions">
+              <el-button
+                size="small"
+                title="下载原文件"
+                :loading="fileLoadingId === item.id"
+                @click="downloadFile(item)"
+              >
+                下载
+              </el-button>
               <template v-if="item.analyzed">
                 <el-button size="small" @click="openAnalysis(item)">
                   查看分析
@@ -548,17 +532,6 @@ async function handleDelete(item) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* 名称 = 原文件预览入口（API §4.7）；虚线下划线示意可点击 */
-.item__name--link {
-  cursor: pointer;
-  color: var(--brand-600);
-  border-bottom: 1px dashed currentColor;
-}
-
-.item__name--link:hover {
-  border-bottom-style: solid;
 }
 
 .item__meta {

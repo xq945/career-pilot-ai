@@ -40,10 +40,10 @@ public class ResumeAnalysis {
 
     private Long resumeId;
 
-    /** 同一简历的分析版本号，从 1 递增（仅内容变化时才产生新版本） */
+    /** 同一简历的分析版本号，从 1 递增（每次分析都产生新版本） */
     private Integer versionNo;
 
-    /** 分析时简历文本的 SHA-256（对入库后的 resume.content 计算），用于判断能否复用 */
+    /** 分析时简历文本的 SHA-256（对入库后的 resume.content 计算），数据追溯用 */
     private String sourceHash;
 
     private String summary;

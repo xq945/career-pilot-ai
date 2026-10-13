@@ -13,7 +13,7 @@
   状态：本页用顶部「演示状态」切换器展示三种形态 —— 已分析 / 未分析 / 分析失败。
         实现阶段由接口返回值决定：analyzed=true 渲染结果；analyzed=false 渲染空态；
         接口抛 50200 / 50201 时渲染失败态并提供重试。
-  边界：不提供历史版本切换（后端只返回最新一版，版本号仅用于服务端复用判断）；
+  边界：不提供历史版本切换（后端只返回最新一版，版本号用于数据追溯）；
         不展示简历原文 —— 简历文本不回流前端。
 -->
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
@@ -31,7 +31,7 @@
         <div class="page-head">
           <div class="page-head__text">
             <h1>AI 简历分析</h1>
-            <p class="page-head__desc">基于简历文本的结构化分析结果，用于后续的岗位匹配与能力差距评估</p>
+            <p class="page-head__desc">基于简历文本的结构化分析结果，用于后续的简历定向优化与能力差距评估</p>
           </div>
           <div class="page-head__actions">
             <a class="btn btn--ghost" href="resumes.html">
@@ -181,7 +181,7 @@
                   </dl>
                   <div class="divider"></div>
                   <p class="small muted">
-                    系统按「简历内容指纹」判断是否需要重新分析。内容未变化时再次分析会直接复用本结果，不重复调用模型。
+                    每次重新分析都会调用大模型生成新版本，旧版本保留可追溯。
                   </p>
                   <button class="btn btn--block mt-12" data-modal-open="md-reanalyze">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>
@@ -193,13 +193,13 @@
               <div class="card">
                 <div class="card__head"><h2>下一步</h2></div>
                 <div class="card__body card__body--tight">
-                  <a class="item" href="match.html" style="padding:10px 0">
+                  <a class="item" href="optimization.html" style="padding:10px 0">
                     <div class="item__icon">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
                     </div>
                     <div class="item__main">
-                      <div class="item__title">与目标岗位匹配</div>
-                      <div class="item__meta">生成五维评分与差距报告</div>
+                      <div class="item__title">按目标岗位优化简历</div>
+                      <div class="item__meta">生成优化稿与前后匹配度对比</div>
                     </div>
                   </a>
                   <a class="item" href="interview.html" style="padding:10px 0">
@@ -226,7 +226,7 @@
                 <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18.5 16.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
               </div>
               <h3 style="font-size:17px">这份简历还没有做过 AI 分析</h3>
-              <p>分析会梳理简历中的技能、经历与优势，并给出可执行的改进建议。分析结果同时是岗位匹配的前置条件。</p>
+              <p>分析会梳理简历中的技能、经历与优势，并给出可执行的改进建议。分析结果同时是简历定向优化的前置条件。</p>
               <button class="btn btn--primary btn--lg" data-modal-open="md-start">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>
                 发起 AI 分析
@@ -285,7 +285,7 @@
     <div class="modal__body">
       <div class="alert">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
-        <div>分析会调用一次大模型，通常需要 10–30 秒。简历内容未变化时重复分析会<strong>复用已有结果</strong>，不重复消耗。</div>
+        <div>分析会调用一次大模型，通常需要 10–30 秒。</div>
       </div>
     </div>
     <div class="modal__foot">
@@ -303,10 +303,10 @@
       <button class="modal__close" data-modal-close>×</button>
     </div>
     <div class="modal__body">
-      <p class="mb-12">重新分析会再次请求大模型，通常需要 10–30 秒。</p>
+      <p class="mb-12">重新分析会再次请求大模型并生成新版本，通常需要 10–30 秒。</p>
       <div class="alert">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
-        <div>若简历内容与上次分析时一致，系统会<strong>直接返回已有结果</strong>，不产生新的分析版本，也不重复调用模型。</div>
+        <div>每次重新分析都会生成新的分析版本（versionNo 递增），旧版本仍保留可追溯。</div>
       </div>
     </div>
     <div class="modal__foot">

@@ -22,11 +22,11 @@
 | `profile-flow.mjs` | 个人中心用例（路由导航、昵称修改与即时同步、头像上传/替换/移除、双侧校验、页内退出） |
 | `fixtures.mjs` | 简历测试文件的**动态构造器**（DOCX/PDF/HTML/TXT，含中文；全在内存按格式规范拼装，零二进制入库）。也可单独运行 `node tools/e2e/fixtures.mjs --out ./tmp` 生成一组文件供 curl 验收使用 |
 | `resume-flow.mjs` | 简历管理用例（上传 DOCX/HTML/TXT/PDF、前端即时校验、服务端 415/400/413、删除三条后果与幂等、分页显隐与翻页） |
-| `analysis-flow.mjs` | 简历 AI 分析用例（入口跳转与确认、AiWaiting 等待态、结果渲染、**复用路径秒回且版本不变**、未分析空态、错误态）；**消耗真实模型 token** |
-| `resume-file-flow.mjs` | 简历原文件预览 / 下载用例（名称点击预览、下载图标、取回内容与上传原文一致、删除后 404） |
-| `job-flow.mjs` | 岗位模块用例（新建/编辑弹窗与校验、**三态标签**、改描述后立即「分析已过期」、过期重分析生成新版本、复用路径、删除）；**消耗 2 次真实模型调用** |
-| `match-flow.mjs` | 匹配模块用例（新建弹窗的就地拦截、报告页分数环/维度条/三栏明细与免责说明、重复匹配、过期拦截、删除后可见性）；**消耗真实模型调用** |
-| `interview-flow.mjs` | 面试模块用例（创建弹窗校验与出题等待态、**进度分母取实际题数**、逐题作答与评价渲染、重答确认弹窗与**总分即时重算**、报告页总分/总评/分类/查看回答、列表进行中与已完成两态）；**消耗 6 次真实模型调用（出题 1 + 评价 3 + 总评 2）**，默认浏览器端口 9223（便于与 match/job 并行） |
+| `analysis-flow.mjs` | 简历 AI 分析用例（入口跳转与确认、AiWaiting 等待态、结果渲染、**重新分析生成新版本**、未分析空态、错误态）；**消耗真实模型 token（两次完整分析）** |
+| `resume-file-flow.mjs` | 简历原文件下载用例（名称非文件入口——点击不触发打开/下载、右侧操作列的下载按钮、取回内容与上传原文一致、删除后 404） |
+| `job-flow.mjs` | 岗位模块用例（新建/编辑弹窗与校验、**三态标签**、改描述后立即「分析已过期」、过期重分析生成新版本、描述未变重分析同样生成新版本、删除）；**消耗 3 次真实模型调用** |
+| `optimization-flow.mjs` | 简历定向优化用例（导航与空态、新建弹窗的就地拦截〔未分析简历/岗位，不发请求〕、选择已有岗位的完整优化流程、工作台区块渲染、编辑保存不覆盖模型原稿、重新评估、历史版本、列表分数对比、**手动输入 JD 的三步编排**）；**消耗 8 次真实模型调用（预置分析 2 + 主流程 3 + 手动 JD 路径 3）**，默认浏览器端口 9225（M11 起替代原 match-flow） |
+| `interview-flow.mjs` | 面试模块用例（创建弹窗校验与出题等待态、**进度分母取实际题数**、逐题作答与评价渲染、重答确认弹窗与**总分即时重算**、报告页总分/总评/分类/查看回答、列表进行中与已完成两态）；**消耗 6 次真实模型调用（出题 1 + 评价 3 + 总评 2）**，默认浏览器端口 9223（便于与优化/岗位流程并行） |
 | `agent-flow.mjs` | 求职智能体用例（侧栏入口点亮、空态与示例问题填入、上下文选择「未分析只提示不拦截」、非流式等待态文案、助手气泡与**工具调用折叠条只显示名称与状态**、会话列表新增/切换、刷新后恢复）；**消耗约 2–3 次真实对话调用（含工具内部的分析）**，默认浏览器端口 9224 |
 
 ## 用法
@@ -40,7 +40,7 @@ node tools/e2e/resume-flow.mjs
 node tools/e2e/analysis-flow.mjs      # 消耗真实模型 token
 node tools/e2e/resume-file-flow.mjs
 node tools/e2e/job-flow.mjs           # 消耗 2 次真实模型调用
-node tools/e2e/match-flow.mjs         # 消耗真实模型调用
+node tools/e2e/optimization-flow.mjs  # 消耗真实模型调用（8 次）
 node tools/e2e/interview-flow.mjs     # 消耗 6 次真实模型调用（端口 9223）
 node tools/e2e/agent-flow.mjs         # 消耗约 2–3 次真实对话调用（端口 9224）
 
@@ -74,7 +74,10 @@ node tools/e2e/auth-flow.mjs --shots ./shots
   `<input>` 与 `<textarea>` 的 value 在各自的原型上，用错原型会抛
   `TypeError: Illegal invocation`（填多行文本框须传 `.el-textarea__inner` 选择器）。
 - **已登录时导航到 `/login`、`/register` 会被守卫重定向**，脚本若以为能停在那一页，
-  后续会在一个空 DOM 上操作、报出难以理解的错误。开跑前先 `localStorage.clear()`。
+  后续会在一个空 DOM 上操作、报出难以理解的错误。开跑前先 `localStorage.clear()`——
+  但注意 `clear()` 必须在 `goto` 到 http 页面**之后**调用：初始页是 `about:blank`
+  （opaque origin），在那里读写 `localStorage` 会被浏览器直接拒绝（`SecurityError`）。
+  `launchBrowser` 每次用全新 `user-data-dir`，全新 profile 本就无凭据、通常不需要清。
 - **Vue Router 不编码 query 中的 `/`**：实际是 `?redirect=/dashboard`，不是 `%2F`；
   断言 URL 前先 `decodeURIComponent`。
 - **脚本赋值不会触发 blur 校验**：`fill()` 只设置 value 并派发事件、不获得焦点，
@@ -99,5 +102,18 @@ node tools/e2e/auth-flow.mjs --shots ./shots
   状态时直接按 URL `goto` 到目标页更稳。
 - **`ResourcePicker` 弹窗打开时资源列表仍在异步加载**：`.picker` 容器先渲染，列表项
   `.picker__item` 后到（加载期间是 `.picker__loading` 占位）。等容器出现就点列表项会找不到
-  元素（agent-flow 首跑踩到），要按 **item 数量** 等待（`match-flow.mjs` / `agent-flow.mjs` 均如此）。
+  元素（agent-flow 首跑踩到），要按 **item 数量** 等待（`optimization-flow.mjs` / `agent-flow.mjs` 均如此）。
+- **`offsetParent` 判不了 SVG 的显隐**：该属性只定义在 `HTMLElement` 上，SVG 元素取到
+  `undefined`，`offsetParent !== null` 恒真、断言静默放行（验证侧边栏折叠时踩到）。
+  判 SVG 的显隐要用 `getComputedStyle(el).display !== 'none'`。
+- **布局断言不要写死视口宽度**：纵向滚动条会占掉视口的一部分（本机无头 Chrome 为 8px），
+  同一视口下"内容高过屏幕"与"没高过"的两次测量结果并不相同。宽度期望值要用
+  `document.documentElement.clientWidth` 现算（验证内容区铺满时踩到）。
+- **dev server 热重载会在脚本运行中清空 DOM**：改着文件验证时，Vite 的热重载可能推送
+  整页 reload，`querySelector` 恰好落在重建窗口期就取到 `null`。量测前先
+  `waitFor('.content')` 之类的"布局已挂载"断言兜底。
+- **可见性要断到真正承载视觉的那个元素**：按钮是个 flex 容器，里面的图标被
+  `display: none` 时容器照样可见、照样可点 —— 只断言容器会漏掉「图标消失但功能正常」
+  这类 bug（侧边栏折叠开关踩到，用户先发现的）。断图标本身：
+  `getComputedStyle(icon).display !== 'none'` 再配 `getBoundingClientRect()` 看尺寸。
 - 每个用例**失败不中断**：`createChecker()` 会跑完全部断言再汇总，一次拿到所有问题。

@@ -9,6 +9,8 @@ import {
   ChatDotRound,
   ChatLineSquare,
   Document,
+  Expand,
+  Fold,
   Odometer,
   SwitchButton,
   User,
@@ -18,48 +20,30 @@ import BrandMark from '@/components/BrandMark.vue'
 import { useUserStore } from '@/stores/user'
 
 /**
- * 应用骨架（《前端原型设计》§3）：左侧固定侧边栏 232px + 顶栏 56px + 内容区。
+ * 应用骨架（《前端原型设计》§3）：左侧固定侧边栏 232px（可折叠为 64px 图标条）+ 顶栏 56px + 内容区。
  *
  * 例外页面不套用本布局：登录 / 注册用 AuthLayout（左右分栏）。
  *
- * 导航按 §1.2 的四组结构渲染。`ready: false` 的项以 disabled 呈现，避免点击落到未实现
- * 的路由而报 404 —— 全部模块均已实现，当前所有项均已点亮。
+ * 导航为平铺列表（原型 §1.2 的四组分组已按要求合并）。`ready: false` 的项以 disabled 呈现，
+ * 避免点击落到未实现的路由而报 404 —— 全部模块均已实现，当前所有项均已点亮。
  */
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
-const NAV_GROUPS = [
-  {
-    label: '总览',
-    items: [
-      { path: '/dashboard', text: '仪表盘', icon: Odometer, ready: true },
-      { path: '/agent', text: '求职智能体', icon: ChatDotRound, ready: true },
-    ],
-  },
-  {
-    label: '求职材料',
-    items: [
-      { path: '/resumes', text: '简历管理', icon: Document, ready: true },
-      { path: '/jobs', text: '岗位管理', icon: Briefcase, ready: true },
-    ],
-  },
-  {
-    label: 'AI 分析与练习',
-    items: [
-      { path: '/matches', text: '岗位匹配', icon: Aim, ready: true },
-      { path: '/interviews', text: 'AI 面试', icon: ChatLineSquare, ready: true },
-    ],
-  },
-  {
-    label: '账号',
-    items: [{ path: '/profile', text: '个人中心', icon: User, ready: true }],
-  },
+const NAV_ITEMS = [
+  { path: '/dashboard', text: '仪表盘', icon: Odometer, ready: true },
+  { path: '/agent', text: '求职智能体', icon: ChatDotRound, ready: true },
+  { path: '/resumes', text: '简历管理', icon: Document, ready: true },
+  { path: '/jobs', text: '岗位管理', icon: Briefcase, ready: true },
+  { path: '/optimizations', text: '简历定向优化', icon: Aim, ready: true },
+  { path: '/interviews', text: 'AI 面试', icon: ChatLineSquare, ready: true },
+  { path: '/profile', text: '个人中心', icon: User, ready: true },
 ]
 
 /** 当前高亮项。详情页（如 /resumes/3/analysis）应高亮其列表项 */
 const activeNav = computed(() => {
-  const matched = NAV_GROUPS.flatMap((group) => group.items)
+  const matched = NAV_ITEMS
     .filter((item) => item.ready)
     .find((item) => route.path === item.path || route.path.startsWith(`${item.path}/`))
   return matched?.path ?? route.path
@@ -71,6 +55,9 @@ const breadcrumb = computed(() => {
   const title = route.meta?.title
   return [group, title].filter(Boolean)
 })
+
+/** 侧边栏是否收起为图标条（品牌区的开关按钮切换；窄屏的自动折叠见样式末尾的媒体查询） */
+const collapsed = ref(false)
 
 /** 头像图片加载失败时回退为首字符占位（记录失败的 URL，换新头像后自动恢复尝试） */
 const brokenAvatar = ref('')
@@ -99,26 +86,41 @@ async function handleLogout() {
 
 <template>
   <div class="shell">
-    <aside class="sidebar">
+    <aside class="sidebar" :class="{ 'sidebar--collapsed': collapsed }">
       <div class="sidebar__brand">
-        <BrandMark :size="28" />
+        <BrandMark class="sidebar__logo" :size="28" />
         <span class="sidebar__title">智能求职辅助平台</span>
+        <button
+          class="sidebar__toggle"
+          type="button"
+          :title="collapsed ? '展开侧边栏' : '收起侧边栏'"
+          :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
+          :aria-expanded="!collapsed"
+          @click="collapsed = !collapsed"
+        >
+          <el-icon><component :is="collapsed ? Expand : Fold" /></el-icon>
+        </button>
       </div>
 
-      <el-menu class="sidebar__nav" :default-active="activeNav" router>
-        <!-- el-menu-item-group 的标题即导航分组名 -->
-        <el-menu-item-group v-for="group in NAV_GROUPS" :key="group.label" :title="group.label">
-          <el-menu-item
-            v-for="item in group.items"
-            :key="item.path"
-            :index="item.path"
-            :disabled="!item.ready"
-          >
-            <el-icon><component :is="item.icon" /></el-icon>
+      <el-menu
+        class="sidebar__nav"
+        :default-active="activeNav"
+        :collapse="collapsed"
+        router
+      >
+        <el-menu-item
+          v-for="item in NAV_ITEMS"
+          :key="item.path"
+          :index="item.path"
+          :disabled="!item.ready"
+        >
+          <el-icon><component :is="item.icon" /></el-icon>
+          <!-- 文字写进 #title 插槽：折叠态 el-menu 用它渲染浮层提示；留在默认插槽只会被收成图标 -->
+          <template #title>
             <span>{{ item.text }}</span>
             <span v-if="!item.ready" class="nav-item__pending">待实现</span>
-          </el-menu-item>
-        </el-menu-item-group>
+          </template>
+        </el-menu-item>
       </el-menu>
 
       <div class="sidebar__foot">本科毕业设计 · 基于 Spring AI</div>
@@ -166,9 +168,7 @@ async function handleLogout() {
       </header>
 
       <main class="content">
-        <div class="content__inner">
-          <router-view />
-        </div>
+        <router-view />
       </main>
     </div>
   </div>
@@ -191,6 +191,8 @@ async function handleLogout() {
   position: sticky;
   top: 0;
   height: 100vh;
+  /* 折叠开关切换宽度时平滑过渡；el-menu 的宽度跟随容器，无需单独过渡 */
+  transition: width 0.2s ease, flex-basis 0.2s ease;
 }
 
 .sidebar__brand {
@@ -204,10 +206,38 @@ async function handleLogout() {
 }
 
 .sidebar__title {
-  font-size: 15px;
+  /* 14px：与导航文字一致；15px + 开关按钮在 232px 内会被省略号截断 */
+  font-size: 14px;
   font-weight: 600;
   color: var(--ink-900);
   white-space: nowrap;
+  /* 与开关按钮同行：空间不足时省略标题，不挤压按钮 */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 折叠开关：与顶栏的次要控件同一套灰度与悬停反馈 */
+.sidebar__toggle {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-400);
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sidebar__toggle:hover {
+  background: var(--brand-50);
+  color: var(--brand-600);
 }
 
 /* el-menu 默认自带右边框与背景色，此处对齐原型：白底、无边框、主色浅底激活态 */
@@ -234,12 +264,6 @@ async function handleLogout() {
   font-weight: 500;
 }
 
-.sidebar__nav :deep(.el-menu-item-group__title) {
-  font-size: 12px;
-  color: var(--ink-400);
-  padding: 14px 12px 6px;
-}
-
 .nav-item__pending {
   margin-left: auto;
   font-size: 11px;
@@ -257,6 +281,37 @@ async function handleLogout() {
   border-top: 1px solid var(--line);
   font-size: 12px;
   color: var(--ink-400);
+}
+
+/* ---- 折叠态（图标条）----
+   与窄屏媒体查询的自动折叠同形；宽度取 token，与 el-menu 自算的折叠宽度一致 */
+.sidebar--collapsed {
+  width: var(--sidebar-w-collapsed);
+  flex-basis: var(--sidebar-w-collapsed);
+}
+
+/* 64px 放不下品牌标记与开关两个 28px 元素，标记让位给开关（点击它即展开） */
+.sidebar--collapsed .sidebar__brand {
+  justify-content: center;
+  padding: 0;
+}
+
+/* 只隐品牌标记：不能写 `.sidebar__brand svg` —— 开关按钮里的图标也是 svg，会一起被藏掉 */
+.sidebar--collapsed .sidebar__logo,
+.sidebar--collapsed .sidebar__title,
+.sidebar--collapsed .sidebar__foot {
+  display: none;
+}
+
+/* auto 外边距优先于 justify-content，须显式取消开关才能居中 */
+.sidebar--collapsed .sidebar__toggle {
+  margin-left: 0;
+}
+
+/* el-menu 的折叠对齐只作用于「直接子级」菜单项，本项目的项都在分组内，需自行居中 */
+.sidebar--collapsed .sidebar__nav :deep(.el-menu-item) {
+  justify-content: center;
+  padding: 0;
 }
 
 /* ---- 主区 ---- */
@@ -343,8 +398,8 @@ async function handleLogout() {
 /* 窄屏：侧边栏收起为图标条，与原型 §2.3 的响应式约定一致 */
 @media (max-width: 900px) {
   .sidebar {
-    width: 64px;
-    flex-basis: 64px;
+    width: var(--sidebar-w-collapsed);
+    flex-basis: var(--sidebar-w-collapsed);
   }
 
   .sidebar__title,
@@ -358,8 +413,19 @@ async function handleLogout() {
     padding: 0;
   }
 
+  /* 此时已是自动图标条，手动开关既无位置也无可操作空间 */
+  .sidebar__toggle {
+    display: none;
+  }
+
   .sidebar__nav :deep(.el-menu-item span) {
     display: none;
+  }
+
+  /* 与折叠态同形：图标居中 */
+  .sidebar__nav :deep(.el-menu-item) {
+    justify-content: center;
+    padding: 0;
   }
 
   .topbar__user-name {

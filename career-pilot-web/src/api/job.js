@@ -36,8 +36,7 @@ export function removeJob(id) {
  * 发起岗位分析（5.6）：无请求体；同步调用通常 10–30 秒。
  *
  * AI 接口超时统一设 120 秒（《API接口设计》10.3：与后端总超时对齐）；
- * 描述未变化时后端直接复用已有结果、不重复调用模型（响应很快返回，且
- * **不产生新版本**——前端不得假设"重新分析 ⇒ versionNo+1"）。
+ * 每次调用都会重新分析并生成新版本（versionNo 递增，2026-10-13 起不再复用）。
  */
 export function analyzeJob(id) {
   return request.post(`/jobs/${id}/analyze`, null, { timeout: 120000 })

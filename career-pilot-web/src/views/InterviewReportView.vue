@@ -251,8 +251,8 @@ function goAnswer(index) {
               <el-button class="next__btn" @click="router.push('/interviews')">
                 再练一场
               </el-button>
-              <el-button class="next__btn" @click="router.push('/matches')">
-                回匹配报告
+              <el-button class="next__btn" @click="router.push('/optimizations')">
+                去简历定向优化
               </el-button>
             </div>
           </el-card>

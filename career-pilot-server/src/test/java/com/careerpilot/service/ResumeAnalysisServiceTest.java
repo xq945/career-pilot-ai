@@ -36,9 +36,9 @@ import com.careerpilot.mapper.ResumeAnalysisMapper;
 import com.careerpilot.service.ai.ResumeAiService;
 
 /**
- * 简历分析业务编排的单测（《测试与验收方案》1.1：source_hash 复用）。
+ * 简历分析业务编排的单测（《测试与验收方案》1.1：分析版本与落库）。
  *
- * 重点验证「内容未变化 → 复用且**不调用模型**」与「失败不落库」，
+ * 重点验证「每次重新分析都生成新版本（2026-10-13 起不做复用判断）」与「失败不落库」，
  * 全部使用 Mockito 替身，不依赖真实模型与数据库。
  */
 @ExtendWith(MockitoExtension.class)
@@ -74,21 +74,27 @@ class ResumeAnalysisServiceTest {
         verifyNoInteractions(resumeAiService, resumeAnalysisMapper);
     }
 
-    // ---------------------------------------------------------------- 复用
+    // ---------------------------------------------------------------- 每次重新生成（2026-10-13 语义变更）
 
     @Test
-    void analyze_sameSourceHash_reusesResultAndNeverCallsModel() {
+    void analyze_contentUnchanged_stillGeneratesNewVersion() {
         Resume resume = resume(CONTENT);
-        ResumeAnalysis latest = analysis(10L, 1L, 1, sha256(CONTENT));
-        when(resumeAnalysisMapper.selectOne(any())).thenReturn(latest);
+        // 库里已有同源分析（v1），但「重新分析」不复用：仍调用模型并生成新版本
+        when(resumeAnalysisMapper.selectOne(any())).thenReturn(analysis(null, 1L, 1, null));
+        when(resumeAiService.analyze(CONTENT)).thenReturn(aiResult("重新分析结果"));
+        when(resumeAnalysisMapper.insert(any(ResumeAnalysis.class))).thenAnswer(invocation -> {
+            ResumeAnalysis inserted = invocation.getArgument(0);
+            inserted.setId(40L);
+            return 1;
+        });
 
         ResumeAnalysisDetail detail = service.analyze(resume);
 
-        assertThat(detail.getAnalysisId()).isEqualTo(10L);
-        assertThat(detail.getVersionNo()).isEqualTo(1);
-        // 《开发顺序》M4 验收标准：内容未变化时模型未被调用
-        verifyNoInteractions(resumeAiService);
-        verify(resumeAnalysisMapper, never()).insert(any(ResumeAnalysis.class));
+        assertThat(detail.getAnalysisId()).isEqualTo(40L);
+        assertThat(detail.getVersionNo()).isEqualTo(2);
+        assertThat(detail.getSummary()).isEqualTo("重新分析结果");
+        // 内容未变化时模型仍被调用（与旧语义相反：《开发顺序》M4 验收标准已随拍板修订）
+        verify(resumeAiService).analyze(CONTENT);
     }
 
     // ---------------------------------------------------------------- 新版本
@@ -96,11 +102,8 @@ class ResumeAnalysisServiceTest {
     @Test
     void analyze_changedContent_generatesNextVersion() {
         Resume resume = resume(CONTENT);
-        // 第一次 selectOne 是「查最新成功分析」（hash 不同 → 不复用），
-        // 第二次是 nextVersionNo（已有 v2 → 新版本 v3）
-        when(resumeAnalysisMapper.selectOne(any()))
-                .thenReturn(analysis(10L, 1L, 2, "old-hash"))
-                .thenReturn(analysis(null, 1L, 2, null));
+        // 唯一一次 selectOne 是 nextVersionNo（已有 v2 → 新版本 v3）
+        when(resumeAnalysisMapper.selectOne(any())).thenReturn(analysis(null, 1L, 2, null));
         when(resumeAiService.analyze(CONTENT)).thenReturn(aiResult("新版本结果"));
         when(resumeAnalysisMapper.insert(any(ResumeAnalysis.class))).thenAnswer(invocation -> {
             ResumeAnalysis inserted = invocation.getArgument(0);
@@ -159,7 +162,7 @@ class ResumeAnalysisServiceTest {
     @Test
     void analyze_modelFailure_propagatesAndWritesNothing() {
         Resume resume = resume(CONTENT);
-        when(resumeAnalysisMapper.selectOne(any())).thenReturn(null);
+        // 模型先于 nextVersionNo（selectOne）抛出，无需打桩版本查询
         when(resumeAiService.analyze(CONTENT)).thenThrow(BusinessException.aiUnavailable("模型不可用"));
 
         assertThatThrownBy(() -> service.analyze(resume))

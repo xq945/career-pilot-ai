@@ -50,8 +50,8 @@
 
   /* ---- 布局 ------------------------------------------------------------ */
   --sidebar-w: 232px;
+  --sidebar-w-collapsed: 64px; /* 图标条；与 el-menu 折叠宽度一致（icon-width 24 + base-level-padding 20 × 2） */
   --topbar-h: 56px;
-  --content-max: 1160px;
 
   /* ---- Element Plus 主题覆盖 ------------------------------------------- */
   --el-color-primary: var(--brand-600);

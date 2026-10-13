@@ -17,8 +17,8 @@ import com.careerpilot.service.JobService;
 /**
  * 岗位类 Agent 工具（《Agent设计》§4.3）。
  *
- * <p>与分析规则的复用关系同 {@link ResumeAgentTools}；岗位分析过期（描述被改过）时
- * {@code JobAnalysisService.analyze} 内部按 {@code source_hash} 自然决定复用或重算。
+ * <p>与分析规则的复用关系同 {@link ResumeAgentTools}；岗位描述被改过（分析已过期）时
+ * {@code JobAnalysisService.analyze} 同样重新分析并生成新版本（过期判定由 isStale 承担）。
  */
 @Component
 public class JobAgentTools {

@@ -45,6 +45,13 @@
           （经 Maven 中央仓库 maven-metadata.xml 核实，最近更新 2026-01）。
         -->
         <aliyun-sdk-oss.version>3.18.5</aliyun-sdk-oss.version>
+        <!--
+          Apache POI：M11 简历定向优化的 DOCX 导出用。版本 5.5.1 与 Tika 3.3.2 传递进
+          classpath 的版本完全一致（tika-parent 的 poi.version 属性），此处仅是"升级为直接
+          依赖"以便显式使用，不引入任何新版本；Spring Boot 4.1.1 的 BOM 不管理 POI，
+          故显式声明版本（同 jjwt / mybatis-plus / tika 的处理）。
+        -->
+        <poi.version>5.5.1</poi.version>
     </properties>
 
     <dependencyManagement>
@@ -141,6 +148,13 @@
             <groupId>com.aliyun.oss</groupId>
             <artifactId>aliyun-sdk-oss</artifactId>
             <version>${aliyun-sdk-oss.version}</version>
+        </dependency>
+
+        <!-- ===== 文档导出（M11 简历定向优化：优化稿 → DOCX） ===== -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
         </dependency>
 
         <!-- ===== 简化样板代码 ===== -->

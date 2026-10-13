@@ -54,7 +54,7 @@ CREATE TABLE resume_analysis (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   resume_id BIGINT NOT NULL,
   version_no INT NOT NULL DEFAULT 1 COMMENT '同一简历的分析版本号，从 1 递增',
-  source_hash VARCHAR(64) DEFAULT NULL COMMENT '分析时简历文本的 SHA-256，用于判断能否复用',
+  source_hash VARCHAR(64) DEFAULT NULL COMMENT '分析时简历文本的 SHA-256，数据追溯用',
   summary TEXT,
   skills JSON,
   education JSON,
@@ -95,7 +95,7 @@ CREATE TABLE job_analysis (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   job_id BIGINT NOT NULL,
   version_no INT NOT NULL DEFAULT 1 COMMENT '同一岗位的分析版本号，从 1 递增',
-  source_hash VARCHAR(64) DEFAULT NULL COMMENT '分析时岗位描述的 SHA-256，用于判断能否复用与是否过期',
+  source_hash VARCHAR(64) DEFAULT NULL COMMENT '分析时岗位描述的 SHA-256，用于判断分析是否过期（stale）',
   responsibilities JSON,
   required_skills JSON,
   preferred_skills JSON,
@@ -228,3 +228,40 @@ CREATE TABLE agent_chat_message (
   CONSTRAINT fk_agent_message_user FOREIGN KEY (user_id) REFERENCES sys_user(id) ON DELETE RESTRICT,
   CONSTRAINT fk_agent_message_session FOREIGN KEY (session_id) REFERENCES agent_session(session_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='智能体对话与工具调用记录';
+
+-- ============================================================
+-- 11. 简历定向优化记录（V1.6 新增，M11）
+-- ============================================================
+CREATE TABLE resume_optimization (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  resume_id BIGINT NOT NULL,
+  job_id BIGINT NOT NULL,
+  match_record_id BIGINT NOT NULL COMMENT '优化前匹配评估（复用 match_record，含明细与维度分）',
+  version_no INT NOT NULL DEFAULT 1 COMMENT '同一简历+岗位的优化版本号，从 1 递增',
+  optimized_content LONGTEXT COMMENT '模型输出的优化后简历（Markdown 原稿，不可变，见《数据库设计》5.11）',
+  changes JSON COMMENT '逐项修改说明 [{section,type,reason,before,after}]',
+  gap_questions JSON COMMENT '待用户确认的问题（简历中缺失的事实，不由模型补全）',
+  edited_content LONGTEXT DEFAULT NULL COMMENT '用户编辑后的当前稿（不覆盖 optimized_content）',
+  edit_history JSON DEFAULT NULL COMMENT '编辑历史快照 [{content,savedAt}]，最多保留 10 版',
+  score_after DECIMAL(5,2) DEFAULT NULL COMMENT '优化后匹配总分（重新评估后写入，0.00–100.00）',
+  dimension_scores_after JSON DEFAULT NULL COMMENT '优化后维度得分（结构同 match_record.dimension_scores）',
+  optimized_analysis JSON DEFAULT NULL COMMENT '优化稿的结构化分析（评估依据，追溯用）',
+  evaluated_at DATETIME DEFAULT NULL COMMENT '最近一次评估时间',
+  model_name VARCHAR(100) COMMENT '实际调用的模型名',
+  status VARCHAR(20) NOT NULL DEFAULT 'SUCCESS' COMMENT 'SUCCESS/FAILED',
+  error_message VARCHAR(500) DEFAULT NULL COMMENT '仅排查用，不向前端返回',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '编辑保存/评估后须由应用层显式更新',
+  UNIQUE KEY uk_resume_optimization_version (resume_id, job_id, version_no),
+  KEY idx_resume_optimization_user_created (user_id, created_at),
+  KEY idx_resume_optimization_job (job_id),
+  KEY idx_resume_optimization_match (match_record_id),
+  CONSTRAINT fk_resume_optimization_user FOREIGN KEY (user_id) REFERENCES sys_user(id) ON DELETE RESTRICT,
+  CONSTRAINT fk_resume_optimization_resume FOREIGN KEY (resume_id) REFERENCES resume(id) ON DELETE RESTRICT,
+  CONSTRAINT fk_resume_optimization_job FOREIGN KEY (job_id) REFERENCES job(id) ON DELETE RESTRICT,
+  CONSTRAINT fk_resume_optimization_match FOREIGN KEY (match_record_id) REFERENCES match_record(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='简历定向优化记录';
+
+-- V1.6 增量（既有库升级执行；新建库执行上面的完整 DDL 即可）：
+-- 该表为 V1.6 全新新增、无列级变更，把上面的 CREATE TABLE resume_optimization 整段执行一次即可。

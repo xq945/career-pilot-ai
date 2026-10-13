@@ -66,7 +66,9 @@ const stats = computed(() => {
   return [
     { key: 'resume', label: '简历', value: s.resumeCount, unit: '份', foot: resumeFoot(s) },
     { key: 'job', label: '目标岗位', value: s.jobCount, unit: '个', foot: jobFoot(s) },
-    { key: 'match', label: '匹配分析', value: s.matchCount, unit: '次', foot: matchFoot(s) },
+    // M11 起页面入口为「简历定向优化」：matchCount 计的是匹配记录数（每次优化都会写一条，
+    // 智能体也可能产生），语义上即"围绕简历与岗位的分析次数"，字段名与口径不变
+    { key: 'match', label: '简历优化', value: s.matchCount, unit: '次', foot: matchFoot(s) },
     { key: 'interview', label: '模拟面试', value: s.interviewCount, unit: '场', foot: interviewFoot(s) },
   ]
 })
@@ -90,9 +92,9 @@ function jobFoot(s) {
 
 function matchFoot(s) {
   if (s.bestMatchScore === null) {
-    return '暂无匹配记录'
+    return '暂无优化记录'
   }
-  return `最高分 ${s.bestMatchScore}`
+  return `最高匹配分 ${s.bestMatchScore}`
 }
 
 function interviewFoot(s) {
@@ -122,8 +124,9 @@ function scoreType(score) {
   return 'warning'
 }
 
-function openReport(item) {
-  router.push({ name: 'match-report', params: { id: item.id } })
+/** 进入简历定向优化（匹配报告页已随 M11 下线，行内不再提供跳转） */
+function goOptimize() {
+  router.push({ name: 'optimizations' })
 }
 
 /* ---------------------------------------------------------------- 能力差距概览 */
@@ -149,7 +152,8 @@ const checklist = computed(() => {
       to: { name: 'jobs' },
       meta: s.jobStaleCount > 0 ? `${s.jobStaleCount} 个岗位描述已更新，需重新分析` : '',
     },
-    { title: '生成匹配报告', done: s.matchCount > 0, action: '去匹配', to: { name: 'matches' } },
+    // 判定仍用 matchCount（接口无 optimizationCount；优化流程每次都会写入一条匹配记录）
+    { title: '生成优化报告', done: s.matchCount > 0, action: '去优化', to: { name: 'optimizations' } },
     { title: '完成一次模拟面试', done: s.interviewCompletedCount > 0, action: '去练习', to: { name: 'interviews' } },
   ]
 })
@@ -163,13 +167,7 @@ const donePercent = computed(() => Math.round((doneCount.value / 6) * 100))
     <div class="page-head">
       <div>
         <h1>{{ greeting }}，{{ userStore.displayName }}</h1>
-        <p class="page-head__desc">
-          这里是你的求职准备进度总览。完成下方清单，即可生成第一份匹配报告。
-        </p>
       </div>
-      <el-button type="primary" :icon="Plus" @click="router.push({ name: 'resumes' })">
-        上传简历
-      </el-button>
     </div>
 
     <StateBlock :loading="loading" :error="loadError" @retry="load">
@@ -195,14 +193,15 @@ const donePercent = computed(() => Math.round((doneCount.value / 6) * 100))
             <template #header>
               <div class="card__head">
                 <h2>最近匹配记录</h2>
-                <el-button size="small" text type="primary" @click="router.push({ name: 'matches' })">
-                  查看全部
+                <el-button size="small" text type="primary" @click="goOptimize">
+                  去简历优化
                 </el-button>
               </div>
             </template>
 
             <p v-if="recentMatches.length === 0" class="block-empty">
-              还没有匹配记录。选择一份已分析的简历与岗位，就能生成第一份匹配报告。
+              还没有匹配记录。到「简历定向优化」选择一份已分析的简历与目标岗位，
+              就能得到匹配分析与优化稿。
             </p>
             <div v-else class="match-list">
               <div v-for="item in recentMatches" :key="item.id" class="match-row">
@@ -218,9 +217,6 @@ const donePercent = computed(() => Math.round((doneCount.value / 6) * 100))
                 <el-tag :type="scoreType(item.matchScore)" size="small" effect="light">
                   {{ item.matchScore }}
                 </el-tag>
-                <el-button size="small" @click="openReport(item)">
-                  查看报告
-                </el-button>
               </div>
             </div>
           </el-card>
@@ -235,7 +231,7 @@ const donePercent = computed(() => Math.round((doneCount.value / 6) * 100))
             </template>
 
             <p v-if="gaps.length === 0" class="block-empty">
-              完成一次匹配后，这里会显示最近一份报告中的能力差距。
+              完成一次简历优化后，这里会显示最近一份匹配分析里的能力差距。
             </p>
             <template v-else>
               <el-alert class="gap-alert" type="warning" :closable="false" show-icon>
@@ -285,42 +281,6 @@ const donePercent = computed(() => Math.round((doneCount.value / 6) * 100))
               </div>
             </div>
           </el-card>
-
-          <!-- 快捷入口 -->
-          <el-card shadow="never" class="card">
-            <template #header>
-              <div class="card__head">
-                <h2>快捷入口</h2>
-              </div>
-            </template>
-
-            <div class="quick-entry" @click="router.push({ name: 'agent' })">
-              <el-icon :size="18">
-                <ChatDotRound />
-              </el-icon>
-              <div>
-                <div class="quick-entry__title">
-                  问一问智能体
-                </div>
-                <div class="quick-entry__meta">
-                  「帮我分析这份简历适合什么岗位」
-                </div>
-              </div>
-            </div>
-            <div class="quick-entry" @click="router.push({ name: 'jobs' })">
-              <el-icon :size="18">
-                <OfficeBuilding />
-              </el-icon>
-              <div>
-                <div class="quick-entry__title">
-                  录入新岗位
-                </div>
-                <div class="quick-entry__meta">
-                  粘贴 JD 原文即可，无需整理格式
-                </div>
-              </div>
-            </div>
-          </el-card>
         </div>
       </div>
     </StateBlock>
@@ -344,9 +304,10 @@ const donePercent = computed(() => Math.round((doneCount.value / 6) * 100))
 
 /* ---------------------------------------------------------------- 统计卡 */
 
+/* 四等分铺满整行 */
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 16px;
 }
@@ -387,9 +348,10 @@ const donePercent = computed(() => Math.round((doneCount.value / 6) * 100))
 
 /* ---------------------------------------------------------------- 两栏布局与卡片 */
 
+/* 左栏自适应填满，右栏固定宽度（与各报告页右栏同为 300px） */
 .columns {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: minmax(0, 1fr) 300px;
   gap: 16px;
   align-items: start;
 }
@@ -577,5 +539,16 @@ const donePercent = computed(() => Math.round((doneCount.value / 6) * 100))
   margin-top: 2px;
   font-size: 12px;
   color: var(--ink-400);
+}
+
+/* 窄屏：统计卡降为两列，两栏堆叠（右栏落到下方，先清单后快捷入口） */
+@media (max-width: 1100px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

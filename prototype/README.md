@@ -23,8 +23,8 @@ prototype/
 ├─ resume-analysis.html    简历 AI 分析
 ├─ jobs.html               岗位管理
 ├─ job-analysis.html       岗位 AI 分析
-├─ match.html              岗位匹配
-├─ match-report.html       匹配报告 + 能力差距
+├─ optimization.html       简历定向优化
+├─ optimization-report.html 优化工作台
 ├─ interview.html          AI 面试列表
 ├─ interview-session.html  模拟面试答题
 ├─ interview-report.html   面试报告

@@ -2,7 +2,7 @@
  * M8 求职智能体接口层验收（《开发顺序》M8、《Agent设计》§9 用例表 AG-01–AG-12）。
  *
  * 覆盖五组：
- * A 主链路（AG-01 分析简历 / AG-09 复用 / AG-02 匹配 / AG-06 岗位分析+出题 / AG-08 分数来自规则）
+ * A 主链路（AG-01 分析简历 / AG-09 重新分析生成新版本 / AG-02 匹配 / AG-06 岗位分析+出题 / AG-08 分数来自规则）
  * B 护栏（AG-07 简历文本注入 / AG-10 工具失败 / AG-11 工具返回值注入）
  * C 边界与越权（AG-03 他人资源 404、40001 参数校验、会话越权）
  * D 截断（AG-12 超 5 次工具调用 → truncated=true、toolCalls ≤ 5、该轮照常落库）
@@ -164,13 +164,18 @@ async function main() {
 
   const analysisAfterFirst = await api('GET', `/resumes/${resumeId}/analysis`, { token: a.token })
   check('AG-01 分析已落库（4.6 接口有结果）', analysisAfterFirst.body?.data?.analyzed === true)
-  const versionAfterFirst = analysisAfterFirst.body?.data?.versionNo
+  // 4.6 的 data 形如 { analyzed, analysis: {...} }，版本号在 analysis 内
+  const versionAfterFirst = analysisAfterFirst.body?.data?.analysis?.versionNo
 
-  // —— AG-09：重复分析同一简历 → source_hash 一致时复用（版本号不变） ——
+  // —— AG-09：重复分析同一简历 → 每次重新分析并生成新版本（2026-10-13 起不复用） ——
   const ag09 = await chat(a.token, '请再分析一次我的这份简历', { resumeId })
-  check('AG-09 再次分析未产生新版本', (await api('GET', `/resumes/${resumeId}/analysis`, { token: a.token }))
-    .body?.data?.versionNo === versionAfterFirst, `原 v${versionAfterFirst}`)
-  check('AG-09 复用了已有分析（会话成功返回）', ag09.body?.code === 0)
+  const versionAfterSecond = (await api('GET', `/resumes/${resumeId}/analysis`, { token: a.token }))
+    .body?.data?.analysis?.versionNo
+  check('AG-09 调用了 analyzeResume 工具且成功', hasTool(ag09, 'analyzeResume')
+    && toolStatus(ag09, 'analyzeResume') === 'SUCCESS', JSON.stringify(ag09.body?.data?.toolCalls))
+  check('AG-09 再次分析生成新版本（versionNo +1）', versionAfterSecond === versionAfterFirst + 1,
+    `原 v${versionAfterFirst} → 现 v${versionAfterSecond}`)
+  check('AG-09 重新分析成功（会话成功返回）', ag09.body?.code === 0)
 
   // —— AG-02 / AG-08：比较简历与岗位 → 匹配工具；分数只来自规则计算 ——
   const ag02 = await chat(a.token, '请比较我的这份简历和这个岗位，看看匹配度如何', { resumeId, jobId })

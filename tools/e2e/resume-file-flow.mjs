@@ -1,13 +1,13 @@
 /**
- * 简历原文件查看与下载的端到端验证（真实浏览器）。
+ * 简历原文件下载的端到端验证（真实浏览器）。
  *
  * 覆盖《API接口设计》§4.7 / 《前端原型设计》§5.3 对应的前端行为：
- * 列表项名称可点击（预览入口）、下载图标（下载入口）、取回的内容与上传一致、
- * 下载文件名取原始文件名。
+ * 右侧操作列的「下载」按钮（唯一文件入口）、名称不再是文件入口（V1.12 起为纯文本，
+ * 点击不触发任何打开或下载）、取回的内容与上传一致、下载文件名取原始文件名。
  *
  * 验证方式说明：脚本在页面内 hook `window.open` 与 `HTMLAnchorElement.prototype.click`，
  * **捕获而不真的打开新标签/触发下载**，再通过 `fetch(blob:)` 取回内容做比对——
- * 这样既能验证 blof URL 确实指向文件内容，又不会在无头环境留下新标签页或下载文件。
+ * 这样既能验证 blob URL 确实指向文件内容，又不会在无头环境留下新标签页或下载文件。
  * 响应头层面的行为（Content-Type / Content-Disposition、HTML 按 text/plain、越权 404）
  * 由 curl 验证，见《验证记录》。
  *
@@ -99,9 +99,8 @@ const waitResumesReady = () => page.waitFor(
  * 在页面内安装 hook：捕获 window.open 与下载链接的点击参数，**拦截这两个真实行为**
  * （无头环境下真的 open/下载会留下新标签页与无谓的下载文件）。
  *
- * 注意 `HTMLAnchorElement.prototype.click` 只拦截**带 download 属性**的链接（我们的下载动作）：
- * 「简历名称」本身也是 `<a>`，若一并覆盖，点击名称就会止步于 hook、不再派发事件，
- * Vue 的 @click 不会触发——预览路径将永远测不到。
+ * `HTMLAnchorElement.prototype.click` 只拦截**带 download 属性**的链接（我们的下载动作），
+ * 其余调用原方法；window.open 的 hook 用于断言「点击名称不触发任何打开」（名称已非文件入口）。
  */
 const installHooks = () => page.evaluate(`(() => {
   window.__openedUrls = []
@@ -154,35 +153,30 @@ try {
     (await page.evaluate(`document.querySelectorAll('.item').length`)) === 1)
   await shot('01-list')
 
-  // ------------------------------------------------------------ ② 名称可点击（预览入口）
+  // ------------------------------------------------------------ ② 名称不再是文件入口（预览已移除）
 
-  check('   列表项名称为可点击链接（预览入口）',
-    await page.evaluate(`!!document.querySelector('.item .item__name--link')`))
-  check('   名称右侧有下载按钮',
-    await page.evaluate(`!!document.querySelector('.item [title="下载原文件"]')`))
-
-  await installHooks()
-  await page.evaluate(`document.querySelector('.item .item__name--link').click()`)
-  await sleep(1500)
-  const openedUrl = await page.evaluate('window.__openedUrls[0]')
-  const failHint = await page.evaluate(
-    `[...document.querySelectorAll('.el-message')].map((e) => e.textContent.trim()).join(' | ')`)
-  check('② 点击名称触发新标签预览（blob 地址）',
-    String(openedUrl).startsWith('blob:'), `${String(openedUrl).slice(0, 24)}${failHint ? '；提示：' + failHint : ''}`)
-
-  const previewText = await textOfBlob(openedUrl)
-  check('   预览取回的内容与上传的原文一致',
-    previewText.trim() === SAMPLE.trim(),
-    `${previewText.length} 字符 vs ${SAMPLE.length}`)
-  await shot('02-preview')
-
-  // ------------------------------------------------------------ ③ 下载入口
+  check('   名称是纯文本（不再是预览链接）',
+    await page.evaluate(`!document.querySelector('.item .item__name--link')`))
+  check('   右侧操作列有下载按钮（唯一文件入口）',
+    await page.evaluate(`!!document.querySelector('.item .item__actions [title="下载原文件"]')`))
 
   await installHooks()
-  await page.evaluate(`document.querySelector('.item [title="下载原文件"]').click()`)
+  await page.evaluate(`document.querySelector('.item .item__name').click()`)
+  await sleep(800)
+  const openedCount = await page.evaluate('window.__openedUrls.length')
+  const downloadCount = await page.evaluate('window.__downloads.length')
+  check('② 点击名称不触发任何打开或下载（名称非入口）',
+    openedCount === 0 && downloadCount === 0,
+    `open=${openedCount} / download=${downloadCount}`)
+  await shot('02-name-click')
+
+  // ------------------------------------------------------------ ③ 下载入口（按钮）
+
+  await installHooks()
+  await page.evaluate(`document.querySelector('.item .item__actions [title="下载原文件"]').click()`)
   await sleep(1500)
   const download = await page.evaluate('window.__downloads[0] || {}')
-  check('③ 点击下载图标触发下载',
+  check('③ 点击下载按钮触发下载',
     String(download.href || '').startsWith('blob:'), String(download.href || '(未触发)').slice(0, 24))
   check('   下载文件名取原始文件名（含扩展名）',
     download.download === FILE_NAME, String(download.download || '(空)'))

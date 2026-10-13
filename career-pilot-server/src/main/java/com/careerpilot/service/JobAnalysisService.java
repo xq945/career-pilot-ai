@@ -21,13 +21,14 @@ import com.careerpilot.service.ai.JobAiService;
 
 /**
  * 岗位分析业务编排（《API接口设计》5.6–5.7、《数据库设计》5.2–5.3），与
- * {@link ResumeAnalysisService} 同构：复用判断、版本递增、失败不落库、唯一索引兜底。
+ * {@link ResumeAnalysisService} 同构：每次调用都重新分析（不做复用判断，2026-10-13
+ * 用户拍板）、版本递增、失败不落库、唯一索引兜底。
  *
  * 岗位独有的两点：
  * 1. **过期（stale）判定**——岗位描述可修改，因此"最新成功分析的 source_hash
  *    与当前 description 不一致"是有意义的业务状态。判定收敛为静态纯函数
- *    {@link #isStale}，由列表、详情、分析查询三处共用；它与分析入口的复用判断
- *    走**同一个** {@link #sameSource} 表达式，两者口径不可能漂移。
+ *    {@link #isStale}，由列表、详情、分析查询三处共用（{@link #sameSource}
+ *    是其唯一表达式）。
  * 2. **重试耗尽的兜底必须同源校验**——见 {@link #generateAndSave} 的注释：
  *    M4 的无条件兜底依赖"简历文本不可变"，岗位不成立，故此处为**有意的**差异。
  *
@@ -68,8 +69,9 @@ public class JobAnalysisService {
     /**
      * 核心入口（M8 的 @Tool 与后续里程碑复用）：入参为**已归属校验**的岗位实体。
      *
-     * 流程：描述非空校验 → 计算 source_hash → 与最新成功分析比对（一致则复用）→
-     * 否则调用模型、清洗、落新版本。
+     * 流程：描述非空校验 → 计算 source_hash → 调用模型、清洗、落新版本。
+     * **不做复用判断**：每次调用都重新分析（《API接口设计》5.6，2026-10-13 用户拍板）；
+     * 描述未变也生成新版本，过期判定（{@link #isStale}）不受影响。
      */
     public JobAnalysisDetail analyze(Job job) {
         String description = job.getDescription();
@@ -77,12 +79,6 @@ public class JobAnalysisService {
             throw BusinessException.badRequest("岗位描述为空，无法分析");
         }
         String sourceHash = Hashing.sha256Hex(description);
-        JobAnalysis latest = findLatestSuccess(job.getId());
-        if (sameSource(sourceHash, latest)) {
-            log.info("岗位描述未变化，复用已有分析：jobId={} analysisId={} versionNo={}",
-                    job.getId(), latest.getId(), latest.getVersionNo());
-            return toDetail(latest);
-        }
         return generateAndSave(job, sourceHash);
     }
 
@@ -98,10 +94,10 @@ public class JobAnalysisService {
     // ---------------------------------------------------------------- 过期（stale）判定
 
     /**
-     * 复用判断：当前描述的 hash 与最新成功分析的 source_hash 一致 → 可直接复用结果。
+     * 内容指纹一致性：当前描述的 hash 与最新成功分析的 source_hash 是否相同。
      *
-     * **唯一表达式**：分析入口的复用判断与 {@link #isStale} 都必须经由本方法，
-     * 否则会出现"列表说已过期、分析接口却在复用"的矛盾。
+     * **唯一表达式**：过期判定（{@link #isStale}）只能经由本方法，
+     * 保证列表 / 详情 / 分析查询三处的口径不漂移。
      */
     public static boolean sameSource(String currentHash, JobAnalysis latestSuccess) {
         return latestSuccess != null && currentHash.equals(latestSuccess.getSourceHash());
@@ -162,7 +158,7 @@ public class JobAnalysisService {
     // ---------------------------------------------------------------- 查询与工具
 
     /**
-     * 最新成功分析（复用判断、过期判定与 5.7 共用同一查询路径）。
+     * 最新成功分析（过期判定、重试兜底与 5.7 共用同一查询路径）。
      *
      * public：M6 创建匹配（读取匹配依据与过期拦截）与 M8 的 Agent 工具复用同一查询，
      * 避免各调用方自行拼 Wrapper 造成口径漂移。

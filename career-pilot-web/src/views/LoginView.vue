@@ -71,7 +71,6 @@ async function handleSubmit() {
 <template>
   <AuthLayout>
     <h2 class="auth__title">欢迎回来</h2>
-    <p class="auth__desc">使用用户名或邮箱登录你的账号</p>
 
     <el-alert
       v-if="errorMessage"

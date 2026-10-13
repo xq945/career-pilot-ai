@@ -22,10 +22,9 @@ import com.careerpilot.service.ai.ResumeAiService;
 /**
  * 简历分析业务编排（《API接口设计》4.5–4.6、《数据库设计》5.2–5.3）。
  *
- * - **复用判断**：对入库后的简历文本（已截断）取 SHA-256，与最新成功分析的 source_hash
- *   比对，一致则直接返回已有结果、**不调用模型**（《数据库设计》5.2）；
- * - **版本**：内容变化时新增 version_no（不覆盖旧结果），并发由
- *   uk_resume_analysis_version 唯一索引兜底 + 少量重试；
+ * - **每次调用都重新分析**（2026-10-13 用户拍板）：不做 source_hash 复用判断，
+ *   一律调用模型并生成新版本（不覆盖旧结果）；source_hash 仍随记录落库（数据追溯）；
+ * - **版本**：新增 version_no，并发由 uk_resume_analysis_version 唯一索引兜底 + 少量重试；
  * - **失败不落库**：模型调用与解析在 INSERT 之前完成，任何 502 都先于写入抛出
  *   （《数据库设计》5.3：第一版只保存成功结果）；
  * - 写路径不加 @Transactional（单条 INSERT 本身原子，与 M3 的写路径约定一致）。
@@ -64,8 +63,8 @@ public class ResumeAnalysisService {
     /**
      * 核心入口（M8 的 @Tool 与后续里程碑复用）：入参为**已归属校验**的简历实体。
      *
-     * 流程：文本非空校验 → 计算 source_hash → 与最新成功分析比对（一致则复用）→
-     * 否则调用模型、清洗、落新版本。
+     * 流程：文本非空校验 → 计算 source_hash → 调用模型、清洗、落新版本。
+     * **不做复用判断**：每次调用都重新分析（《API接口设计》4.5，2026-10-13 用户拍板）。
      */
     public ResumeAnalysisDetail analyze(Resume resume) {
         String content = resume.getContent();
@@ -74,12 +73,6 @@ public class ResumeAnalysisService {
         }
         // 《数据库设计》5.2：source_hash 只对入库后的文本计算，不得重新解析原文件
         String sourceHash = Hashing.sha256Hex(content);
-        ResumeAnalysis latest = findLatestSuccess(resume.getId());
-        if (latest != null && sourceHash.equals(latest.getSourceHash())) {
-            log.info("简历内容未变化，复用已有分析：resumeId={} analysisId={} versionNo={}",
-                    resume.getId(), latest.getId(), latest.getVersionNo());
-            return toDetail(latest);
-        }
         return generateAndSave(resume, sourceHash);
     }
 
@@ -134,7 +127,7 @@ public class ResumeAnalysisService {
     // ---------------------------------------------------------------- 查询与工具
 
     /**
-     * 最新成功分析（复用判断与 4.6 共用同一查询路径）。
+     * 最新成功分析（重试兜底、4.6 与 M6/M8 共用同一查询路径）。
      *
      * public：M6 创建匹配与 M8 的 Agent 工具读取分析依据时复用同一查询，
      * 避免各调用方自行拼 Wrapper 造成口径漂移。

@@ -4,10 +4,10 @@
  *
  * 作为**演示与回归的依据**（《开发顺序》M9 收尾任务 1）：一条脚本走通全部核心模块的
  * 真实浏览器操作与真实模型调用；末步回到仪表盘，核对四卡数字与本次流程产生的数据
- * 逐一一致、准备清单 6/6、最近匹配与能力差距与匹配报告一致。
+ * 逐一一致、准备清单 6/6、最近匹配与能力差距与优化详情一致。
  *
  * 成本：**约 8–10 次真实模型调用**（简历分析 1 + 岗位分析 1 + 匹配解释 1
- *      + 面试出题 1 + 评价 2 + 总评 1 + 助手对话 1–2；分析/匹配皆为首次，无复用）。
+ *      + 面试出题 1 + 评价 2 + 总评 1 + 助手对话 1–2；分析/匹配皆为首次生成）。
  * 前置：后端（8080，真实 API Key）与前端 dev server（5173）都已启动。
  * 与其它 e2e 脚本并行跑时用不同浏览器端口（本脚本默认 9225）。
  *
@@ -362,32 +362,33 @@ try {
   await runAnalysis('岗位', '岗位 AI 分析完成并渲染结果')
   await shot('06-job-analyzed')
 
-  // ============================================================== ⑦ 匹配（/matches）→ 报告页
+  // ============================================================== ⑦ 简历定向优化（/optimizations）→ 工作台
 
-  await page.goto(`${BASE}/matches`)
-  await page.waitFor(`document.querySelector('.page-head h1')?.textContent?.trim() === '岗位匹配'`,
-    { label: '匹配页渲染完成', timeout: 20000 })
-  await clickPageHeadButton('新建匹配分析')
+  await page.goto(`${BASE}/optimizations`)
+  await page.waitFor(`document.querySelector('.page-head h1')?.textContent?.trim() === '简历定向优化'`,
+    { label: '优化页渲染完成', timeout: 20000 })
+  await clickPageHeadButton('新建简历优化')
   await page.waitFor(DIALOG_VISIBLE, { label: '新建弹窗打开' })
   await page.waitFor(`document.querySelectorAll('.el-dialog .picker__item').length >= 2`,
     { label: '两个资源选择器加载完成', timeout: 20000 })
   await pickByName(0, RESUME_NAME)
   await pickByName(1, JOB_NAME)
   await sleep(400)
-  await clickDialogButton('开始匹配')
-  await page.waitFor(`/^\\/matches\\/\\d+$/.test(location.pathname)`, { label: '匹配完成后跳转报告页', timeout: MODEL_TIMEOUT })
-  await page.waitFor(`!!document.querySelector('.score-ring__num')`, { label: '报告渲染', timeout: 20000 })
+  await clickDialogButton('开始优化')
+  await page.waitFor(`/^\\/optimizations\\/\\d+$/.test(location.pathname)`, { label: '优化完成后跳转工作台', timeout: MODEL_TIMEOUT })
+  await page.waitFor(`!!document.querySelector('.score-ring__num')`, { label: '工作台渲染', timeout: 20000 })
 
   const ringScore = parseFloat(await page.textOf('.score-ring__num'))
-  const matchId = Number((await page.evaluate('location.pathname')).split('/').pop())
-  check('⑦ 匹配完成，报告页分数环渲染出分数', Number.isFinite(ringScore), `分数=${ringScore}`)
-  await shot('07-match-report')
+  const optimizationId = Number((await page.evaluate('location.pathname')).split('/').pop())
+  check('⑦ 优化完成，工作台优化前分数环渲染出分数', Number.isFinite(ringScore), `分数=${ringScore}`)
+  await shot('07-optimization-workbench')
 
-  // 记录报告明细（供末步与仪表盘 topGaps 比对；用接口读，避免依赖页面结构）
-  const matchDetail = (await fetch(`${API}/matches/${matchId}`, {
+  // 记录优化详情（供末步与仪表盘 topGaps 比对；用接口读，避免依赖页面结构。
+  // 优化流程内部会写一条 match_record 作为"优化前匹配评估"，仪表盘的统计与差距即来自它）
+  const matchDetail = (await fetch(`${API}/optimizations/${optimizationId}`, {
     headers: { Authorization: `Bearer ${TOKEN}` },
   }).then((r) => r.json())).data
-  check('   报告总分与分数环一致（同一数据源）',
+  check('   优化前总分与分数环一致（同一数据源）',
     Math.abs(ringScore - matchDetail.matchScore) < 1e-9,
     `页面=${ringScore} 接口=${matchDetail.matchScore}`)
 
@@ -469,7 +470,7 @@ try {
     finalCards.join(' / '))
   check('   脚注同步（简历 1 份已分析 / 岗位 1 个已分析 / 最高分 = 报告分数 / 面试 1 场已完成）',
     finalCards[0].includes('1 份已完成 AI 分析') && finalCards[1].includes('1 个已完成 AI 分析')
-    && finalCards[2].includes(`最高分 ${matchDetail.matchScore}`) && finalCards[3].includes('1 场已完成'),
+    && finalCards[2].includes(`最高匹配分 ${matchDetail.matchScore}`) && finalCards[3].includes('1 场已完成'),
     finalCards.join(' / '))
   check('   准备清单 6/6（100%）',
     (await page.textOf('.progress-row')).includes('已完成 6 / 6')
@@ -509,6 +510,7 @@ try {
   console.log(`  DELETE FROM agent_session WHERE user_id = ${uid};`)
   console.log(`  DELETE FROM interview_question WHERE session_id IN (SELECT id FROM interview_session WHERE user_id = ${uid});`)
   console.log(`  DELETE FROM interview_session WHERE user_id = ${uid};`)
+  console.log(`  DELETE FROM resume_optimization WHERE user_id = ${uid};`)
   console.log(`  DELETE FROM match_record WHERE user_id = ${uid};`)
   console.log(`  DELETE FROM job_analysis WHERE job_id IN (SELECT id FROM job WHERE user_id = ${uid});`)
   console.log(`  DELETE FROM job WHERE user_id = ${uid};`)

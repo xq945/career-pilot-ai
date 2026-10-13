@@ -23,8 +23,8 @@ import StateBlock from '@/components/StateBlock.vue'
  *   并标注「基于旧版描述 · vN」（§5.6、原型 job-analysis.html 状态二）；
  * - 本次分析成功后 `stale` 必然为 false（结果基于刚才读到的描述），无需再查。
  *
- * 发起成功后的版本判断：描述未变化时后端**复用**已有结果（同 versionNo、不调模型），
- * 前端不得假设"重新分析 ⇒ versionNo+1"，按版本号是否变化如实提示复用。
+ * 发起成功后的版本判断：每次重新分析都生成新版本（2026-10-13 起不做复用判断），
+ * versionNo 必然递增，前端按响应中的版本号如实提示。
  */
 const route = useRoute()
 const router = useRouter()
@@ -68,13 +68,13 @@ const analyzing = ref(false)
 /** 本次发起的失败信息 { code, message }；null 表示无失败 */
 const analyzeError = ref(null)
 
-/** 发起前确认：说明耗时与复用机制；过期态额外说明将按最新描述生成新版本 */
+/** 发起前确认：说明耗时；过期态额外说明将按最新描述生成新版本 */
 async function confirmAnalyze() {
   const text = stale.value
     ? '岗位描述在分析后已修改。重新分析会按最新描述生成新版本（调用一次大模型，通常需要 10–30 秒）。'
     : analyzed.value
-      ? '重新分析会再次请求大模型。若岗位描述未变化，系统将直接复用已有结果，不会重复调用模型。'
-      : '分析会调用一次大模型，通常需要 10–30 秒。岗位描述未变化时重复分析会复用已有结果，不重复消耗。'
+      ? '重新分析会再次请求大模型并生成新版本（通常需要 10–30 秒）。'
+      : '分析会调用一次大模型，通常需要 10–30 秒。'
   try {
     await ElMessageBox.confirm(
       text,
@@ -103,16 +103,12 @@ async function startAnalyze() {
   analyzeError.value = null
   try {
     // 成功响应即最新分析结果（结构同 GET analysis 的 analysis），直接渲染、无需再查
-    const previousVersionNo = analysis.value?.versionNo
-    const wasFresh = !stale.value
     const result = await analyzeJob(jobId)
     analysis.value = result
     // 本次结果必然基于刚才读到的描述 → 不是过期结果
     stale.value = false
-    // 版本号未变且原先就不过期，说明命中了服务端的复用判断（描述未变化、未调用模型）
-    ElMessage.success(previousVersionNo != null && wasFresh && previousVersionNo === result.versionNo
-      ? '岗位描述未变化，已复用已有分析结果'
-      : `分析完成（v${result.versionNo}）`)
+    // 每次重新分析都生成新版本（2026-10-13 起不再复用），版本号如实展示
+    ElMessage.success(`分析完成（v${result.versionNo}）`)
   }
   catch (error) {
     analyzeError.value = { code: error.code, message: error.message }
@@ -195,8 +191,8 @@ onMounted(async () => {
           <el-icon :size="30" class="empty__icon"><MagicStick /></el-icon>
           <h3 class="empty__title">这个岗位还没有分析过</h3>
           <p class="empty__text">
-            分析会从岗位描述中提取职责、必备技能与加分项，是生成匹配报告的必要前提。
-            通常需要 10–30 秒，描述未变化时重复分析会复用已有结果。
+            分析会从岗位描述中提取职责、必备技能与加分项，是生成优化报告的必要前提。
+            通常需要 10–30 秒。
           </p>
           <el-button type="primary" @click="startAnalyze">发起岗位分析</el-button>
         </div>
@@ -374,7 +370,7 @@ onMounted(async () => {
                 </div>
               </dl>
               <p class="side-note">
-                岗位描述未变化时，重新分析会直接复用本次结果，不会重复消耗模型调用。
+                每次重新分析都会调用大模型生成新版本，旧版本仍保留可追溯。
               </p>
               <el-button class="side-action" :icon="Refresh" @click="startAnalyze">
                 重新分析

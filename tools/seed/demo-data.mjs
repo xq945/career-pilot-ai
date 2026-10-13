@@ -19,6 +19,7 @@
  *   node tools/seed/demo-data.mjs --analyses 4             # 简历全部做分析
  *   node tools/seed/demo-data.mjs --job-analyses 1         # 岗位只做「已分析」，跳过「过期」的演示数据
  *   node tools/seed/demo-data.mjs --matches 2 --interviews 1      # 再预置 2 条匹配记录与 1 场已完成的面试
+ *   node tools/seed/demo-data.mjs --optimizations 1        # 再预置 1 条简历定向优化记录（M11，消耗 2 次模型调用）
  *
  * --matches / --interviews（M9 加入，默认 0 不改变原行为）：为**仪表盘**补上简历/岗位之外的
  * 演示数据——匹配记录、能力差距与面试计数，使准备清单六步接近全亮。匹配用第一份已分析的简历
@@ -50,6 +51,9 @@ const MATCHES = Number(argValue('matches', '0'))
 
 /** 预置的已完成面试场数（0 = 不预置）——供仪表盘的面试计数与准备清单第 6 步 */
 const INTERVIEWS = Number(argValue('interviews', '0'))
+
+/** 预置的简历定向优化记录条数（0 = 不预置；M11 加入）——供「简历定向优化」页的演示数据 */
+const OPTIMIZATIONS = Number(argValue('optimizations', '0'))
 
 /** 预置面试的回答文本（1 题会话，作答至完成） */
 const INTERVIEW_ANSWER = '我会先用 STAR 结构讲清项目背景与我承担的具体职责，再展开技术选型与遇到的难点，'
@@ -360,6 +364,20 @@ async function createMatch(token, resumeId, jobId) {
   return body.data
 }
 
+/** 创建简历定向优化（匹配 + 优化生成，2 次模型调用；要求双方都有未过期的分析） */
+async function createOptimization(token, resumeId, jobId) {
+  const body = await api('/optimizations', {
+    method: 'POST',
+    token,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resumeId, jobId }),
+  })
+  if (body.code !== 0) {
+    throw new Error(`创建优化失败：${body.message}`)
+  }
+  return body.data
+}
+
 /** 创建面试会话（题目随会话一次性生成） */
 async function createInterview(token, jobId, title, questionCount) {
   const body = await api('/interviews', {
@@ -473,6 +491,26 @@ if (MATCHES > 0) {
   }
 }
 
+// ---------------------------------------------------------------- 简历定向优化（可选，供优化页演示）
+
+let optimizationCount = 0
+if (OPTIMIZATIONS > 0) {
+  console.log('\n简历定向优化（预置）：')
+  if (!analyzedResume || !analyzedJob) {
+    console.log('  ⚠ 缺少已分析（未过期）的简历或岗位，跳过优化预置——请保证 --analyses ≥ 1 且 --job-analyses ≥ 1')
+  }
+  else {
+    for (let i = 0; i < OPTIMIZATIONS; i++) {
+      const started = Date.now()
+      const optimization = await createOptimization(token, analyzedResume.id, analyzedJob.id)
+      optimizationCount++
+      console.log(`  ✓ id=${optimization.id}  「${optimization.jobName}」×「${optimization.resumeName}」`
+        + ` —— 优化前 ${optimization.matchScore} 分 · ${optimization.changes?.length ?? 0} 处改动`
+        + ` · ${optimization.gapQuestions?.length ?? 0} 个待确认问题（${((Date.now() - started) / 1000).toFixed(1)}s）`)
+    }
+  }
+}
+
 // ---------------------------------------------------------------- 模拟面试（可选，供仪表盘）
 
 let interviewCount = 0
@@ -496,5 +534,5 @@ if (INTERVIEWS > 0) {
 
 console.log(`\n完成：${created.length} 份简历（${Math.min(ANALYSES, RESUMES.length)} 份已分析）`
   + ` + ${createdJobs.length} 个岗位（覆盖未分析 / 已分析 / 分析已过期三态）`
-  + ` + ${matchCount} 条匹配记录 + ${interviewCount} 场已完成面试。`)
+  + ` + ${matchCount} 条匹配记录 + ${optimizationCount} 条优化记录 + ${interviewCount} 场已完成面试。`)
 console.log(`登录演示账号：${ACCOUNT} / ${PASSWORD}`)

@@ -64,13 +64,13 @@ const analyzing = ref(false)
 /** 本次发起的失败信息 { code, message }；null 表示无失败 */
 const analyzeError = ref(null)
 
-/** 发起前确认：说明耗时与复用机制（原型 §5.4 的两个确认弹窗合并为一处） */
+/** 发起前确认：说明耗时（原型 §5.4 的两个确认弹窗合并为一处） */
 async function confirmAnalyze() {
   try {
     await ElMessageBox.confirm(
       analyzed.value
-        ? '重新分析会再次请求大模型。若简历内容未变化，系统将直接复用已有结果，不会重复调用模型。'
-        : '分析会调用一次大模型，通常需要 10–30 秒。简历内容未变化时重复分析会复用已有结果，不重复消耗。',
+        ? '重新分析会再次请求大模型并生成新版本（通常需要 10–30 秒）。'
+        : '分析会调用一次大模型，通常需要 10–30 秒。',
       analyzed.value ? '重新分析这份简历？' : '发起 AI 分析？',
       {
         confirmButtonText: analyzed.value ? '确定' : '开始分析',
@@ -96,13 +96,10 @@ async function startAnalyze() {
   analyzeError.value = null
   try {
     // 成功响应即最新分析结果（结构同 GET analysis 的 analysis），直接渲染、无需再查
-    const previousAnalysisId = analysis.value?.analysisId
     const result = await analyzeResume(resumeId)
     analysis.value = result
-    // 同一 analysisId 说明命中了服务端的复用判断（内容未变化，未调用模型），如实告知用户
-    ElMessage.success(previousAnalysisId != null && previousAnalysisId === result.analysisId
-      ? '简历内容未变化，已复用已有分析结果'
-      : '分析完成')
+    // 每次重新分析都生成新版本（2026-10-13 起不再复用），版本号如实展示
+    ElMessage.success(`分析完成（v${result.versionNo}）`)
   }
   catch (error) {
     analyzeError.value = { code: error.code, message: error.message }
@@ -176,8 +173,7 @@ onMounted(async () => {
           <el-icon :size="30" class="empty__icon"><MagicStick /></el-icon>
           <h3 class="empty__title">这份简历还没有做过 AI 分析</h3>
           <p class="empty__text">
-            分析结果同时是岗位匹配的前置条件。分析会调用一次大模型，通常需要 10–30 秒，
-            内容未变化时重复分析会复用已有结果。
+            分析结果同时是简历定向优化的前置条件。分析会调用一次大模型，通常需要 10–30 秒。
           </p>
           <el-button type="primary" @click="startAnalyze">发起 AI 分析</el-button>
         </div>
@@ -281,7 +277,7 @@ onMounted(async () => {
               </div>
             </dl>
             <p class="side-note">
-              简历内容未变化时，重新分析会直接复用本次结果，不会重复消耗模型调用。
+              每次重新分析都会调用大模型生成新版本，旧版本仍保留可追溯。
             </p>
             <el-button class="side-action" :icon="Refresh" @click="startAnalyze">
               重新分析

@@ -19,7 +19,7 @@ import com.baomidou.mybatisplus.extension.handlers.Jackson3TypeHandler;
  * JSON 列的处理方式见《数据库设计》5.5：使用 MyBatis-Plus 的 JSON TypeHandler，
  * 并在 @TableName 上开启 autoResultMap，否则查询时不会走 TypeHandler（MyBatis-Plus 的常见坑）。
  *
- * source_hash 承担两个职责（《数据库设计》5.2）：判断能否复用、判断是否已过期（stale）。
+ * source_hash 的用途（《数据库设计》5.2）：判断分析是否已过期（stale）与数据追溯。
  */
 @TableName(value = "job_analysis", autoResultMap = true)
 public class JobAnalysis {
@@ -32,10 +32,10 @@ public class JobAnalysis {
 
     private Long jobId;
 
-    /** 同一岗位的分析版本号，从 1 递增（描述变化时才产生新版本） */
+    /** 同一岗位的分析版本号，从 1 递增（每次分析都产生新版本） */
     private Integer versionNo;
 
-    /** 分析时岗位描述的 SHA-256，用于判断能否复用与是否过期 */
+    /** 分析时岗位描述的 SHA-256，用于判断分析是否过期（stale） */
     private String sourceHash;
 
     @TableField(typeHandler = Jackson3TypeHandler.class)

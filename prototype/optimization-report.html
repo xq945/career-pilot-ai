@@ -1,0 +1,784 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>优化工作台 · 智能求职辅助平台</title>
+<!--
+  页面：优化工作台（简历定向优化的详情、编辑与导出）
+  路由：/optimizations/:id
+  接口：GET  /api/optimizations/{id}            详情（以下区块数据全部来自此接口）
+        PUT  /api/optimizations/{id}/content    保存编辑稿（写 editedContent，不覆盖模型原稿）
+        POST /api/optimizations/{id}/evaluate   重新评估优化后匹配度
+        GET  /api/optimizations/{id}/export     导出 DOCX（二进制下载）
+  响应字段 → 页面区块的映射：
+    matchScore / scoreAfter / dimensionScores / dimensionScoresAfter → ① 优化前后匹配度、② 维度得分对比
+    jobRequirements   → ③ 岗位要求分析（岗位分析快照，只读）
+    resumeAdvantages  → ④ 简历优势
+    matchedItems / partialItems → ⑤ 岗位要求 × 经历对应
+    missingItems      → ⑥ 能力差距
+    gapQuestions      → ⑥ 待确认问题（简历中缺失的事实，不由模型补全）
+    changes           → ⑦ 逐项修改说明（before / after 原文对照）
+    optimizedContent / editedContent → ⑧ 编辑区初始值 = editedContent ?? optimizedContent
+  关键业务规则与措辞约定：
+    1. 优化不覆盖原始简历：原始简历只读展示；模型原稿 optimizedContent 不可变，
+       编辑保存只写 editedContent，历史版本可回填。
+    2. 分数不得表述为录用概率：匹配分数反映简历与岗位描述之间的信息匹配程度，
+       不代表录用概率或招聘结果预测；差距一律表述为「简历未体现 / 缺少相关证据」，
+       禁止出现「你不具备」类断言。
+    3. 优化只改表述、不改变事实；缺失信息以「待确认问题」列出，系统不替用户编造。
+    4. 优化前后分数由同一评分规则、同一份岗位分析计算，改写不保证分数必然提升。
+  状态：演示切换器展示「已评估 / 未评估」两种形态。实现阶段由 scoreAfter 是否为空驱动，
+        切换器本身会被删除。
+-->
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body data-page="optimization" data-crumb="AI 分析与练习 / <a href='optimization.html'>简历定向优化</a> / <b>优化工作台</b>">
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+
+    <div class="content">
+      <div class="content__inner">
+
+        <div class="page-head">
+          <div class="page-head__text">
+            <h1>优化工作台</h1>
+            <p class="page-head__desc">Java后端简历 × Java 后端开发实习生（示例科技）· 优化稿 v2</p>
+          </div>
+          <div class="page-head__actions">
+            <a class="btn btn--ghost" href="optimization.html">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>
+              返回记录
+            </a>
+          </div>
+        </div>
+
+        <!-- ===== 原型演示：状态切换器（实现时删除） ===== -->
+        <div class="note">
+          <b>原型演示控件</b> —— 切换查看「已评估 / 未评估」形态。实现阶段由 <code>scoreAfter</code> 是否为空决定：
+          未评估时「优化后」显示待评估与「重新评估」入口。
+        </div>
+        <div class="btn-group mb-20">
+          <button class="btn btn--sm is-active" data-switch="ev" data-switch-target="done">已评估</button>
+          <button class="btn btn--sm" data-switch="ev" data-switch-target="pending">未评估</button>
+        </div>
+
+        <div class="grid grid--sidebar">
+
+          <!-- ================= 左：主内容 ================= -->
+          <div>
+
+            <!-- ① 优化前后匹配度 -->
+            <div class="card">
+              <div class="card__body" style="padding:24px">
+
+                <!-- 形态一：已评估 -->
+                <div data-switch-panel="ev" data-switch-target="done">
+                  <div class="row" style="gap:28px;align-items:flex-start">
+
+                    <div style="text-align:center;flex:0 0 auto">
+                      <div class="score-ring">
+                        <svg width="132" height="132" viewBox="0 0 132 132">
+                          <circle cx="66" cy="66" r="56" fill="none" stroke="#e2e8f0" stroke-width="12"/>
+                          <!-- 75.75% → dashoffset = 351.86 × (1 − 0.7575) ≈ 85.3 -->
+                          <circle cx="66" cy="66" r="56" fill="none" stroke="#2563eb" stroke-width="12"
+                                  stroke-linecap="round" stroke-dasharray="351.86" stroke-dashoffset="85.3"/>
+                        </svg>
+                        <div class="score-ring__text">
+                          <div class="score-ring__num">75.75<small>分</small></div>
+                          <div class="score-ring__cap">优化前</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="align-self:center;flex:0 0 auto;color:var(--ink-400)">
+                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                    </div>
+
+                    <div style="text-align:center;flex:0 0 auto">
+                      <div class="score-ring">
+                        <svg width="132" height="132" viewBox="0 0 132 132">
+                          <circle cx="66" cy="66" r="56" fill="none" stroke="#e2e8f0" stroke-width="12"/>
+                          <!-- 82.5% → dashoffset = 351.86 × (1 − 0.825) ≈ 61.6 -->
+                          <circle cx="66" cy="66" r="56" fill="none" stroke="#059669" stroke-width="12"
+                                  stroke-linecap="round" stroke-dasharray="351.86" stroke-dashoffset="61.6"/>
+                        </svg>
+                        <div class="score-ring__text">
+                          <div class="score-ring__num">82.5<small>分</small></div>
+                          <div class="score-ring__cap">优化后</div>
+                        </div>
+                      </div>
+                      <span class="tag tag--ok tag--lg mt-12">+6.75</span>
+                    </div>
+
+                    <div style="flex:1;min-width:0;align-self:center">
+                      <p class="small muted" style="line-height:1.75">
+                        提升主要来自「必备技能」与「项目经历相关性」两个维度——改写让原本存在的经历
+                        更贴近岗位表述。分数由系统按固定规则计算，模型不参与给分；改写不保证分数必然提升。
+                      </p>
+                      <div class="row mt-12" style="gap:8px;flex-wrap:wrap">
+                        <button class="btn btn--sm">重新评估</button>
+                        <span class="small muted">最近评估：2026-10-13 15:31</span>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                <!-- 形态二：未评估 -->
+                <div data-switch-panel="ev" data-switch-target="pending" class="is-hidden">
+                  <div class="row" style="gap:28px;align-items:flex-start">
+
+                    <div style="text-align:center;flex:0 0 auto">
+                      <div class="score-ring">
+                        <svg width="132" height="132" viewBox="0 0 132 132">
+                          <circle cx="66" cy="66" r="56" fill="none" stroke="#e2e8f0" stroke-width="12"/>
+                          <circle cx="66" cy="66" r="56" fill="none" stroke="#2563eb" stroke-width="12"
+                                  stroke-linecap="round" stroke-dasharray="351.86" stroke-dashoffset="85.3"/>
+                        </svg>
+                        <div class="score-ring__text">
+                          <div class="score-ring__num">75.75<small>分</small></div>
+                          <div class="score-ring__cap">优化前</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="align-self:center;flex:0 0 auto;color:var(--ink-400)">
+                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                    </div>
+
+                    <div style="text-align:center;flex:0 0 auto">
+                      <div class="score-ring">
+                        <svg width="132" height="132" viewBox="0 0 132 132">
+                          <circle cx="66" cy="66" r="56" fill="none" stroke="#e2e8f0" stroke-width="12"/>
+                        </svg>
+                        <div class="score-ring__text">
+                          <div class="score-ring__num" style="color:var(--ink-400)">—</div>
+                          <div class="score-ring__cap">优化后（未评估）</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="flex:1;min-width:0;align-self:center">
+                      <p class="small muted" style="line-height:1.75">
+                        优化稿生成后尚未评分。点击「重新评估」后，系统会按与优化前<strong>相同的评分规则、
+                          同一份岗位分析</strong>计算优化后匹配度。
+                      </p>
+                      <button class="btn btn--primary btn--sm mt-12">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>
+                        重新评估
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- ② 维度得分对比 -->
+            <div class="card">
+              <div class="card__head">
+                <h2>维度得分对比</h2>
+                <span class="card__sub">总分由系统按固定权重计算</span>
+              </div>
+              <div class="card__body">
+
+                <!-- 形态一：已评估（前后两组） -->
+                <div data-switch-panel="ev" data-switch-target="done">
+                  <div class="grid grid--2">
+                    <div>
+                      <div class="row mb-12">
+                        <span class="strong">优化前</span>
+                        <span class="small muted">75.75 分</span>
+                      </div>
+                      <div class="bar-row">
+                        <div class="bar-row__label">必备技能<small>权重 45%</small></div>
+                        <div class="bar"><div class="bar__fill bar__fill--ok" style="width:80%"></div></div>
+                        <div class="bar-row__value">80</div>
+                      </div>
+                      <div class="bar-row">
+                        <div class="bar-row__label">项目经历相关性<small>权重 25%</small></div>
+                        <div class="bar"><div class="bar__fill" style="width:75%"></div></div>
+                        <div class="bar-row__value">75</div>
+                      </div>
+                      <div class="bar-row">
+                        <div class="bar-row__label">工作或实习经历<small>权重 15%</small></div>
+                        <div class="bar"><div class="bar__fill" style="width:70%"></div></div>
+                        <div class="bar-row__value">70</div>
+                      </div>
+                      <div class="bar-row">
+                        <div class="bar-row__label">学历与经验要求<small>权重 10%</small></div>
+                        <div class="bar"><div class="bar__fill bar__fill--ok" style="width:80%"></div></div>
+                        <div class="bar-row__value">80</div>
+                      </div>
+                      <div class="bar-row">
+                        <div class="bar-row__label">加分技能<small>权重 5%</small></div>
+                        <div class="bar"><div class="bar__fill bar__fill--warn" style="width:50%"></div></div>
+                        <div class="bar-row__value">50</div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div class="row mb-12">
+                        <span class="strong">优化后</span>
+                        <span class="small muted">82.5 分 · 评估于 10-13 15:31</span>
+                      </div>
+                      <div class="bar-row">
+                        <div class="bar-row__label">必备技能<small>权重 45%</small></div>
+                        <div class="bar"><div class="bar__fill bar__fill--ok" style="width:88%"></div></div>
+                        <div class="bar-row__value">88</div>
+                      </div>
+                      <div class="bar-row">
+                        <div class="bar-row__label">项目经历相关性<small>权重 25%</small></div>
+                        <div class="bar"><div class="bar__fill bar__fill--ok" style="width:84%"></div></div>
+                        <div class="bar-row__value">84</div>
+                      </div>
+                      <div class="bar-row">
+                        <div class="bar-row__label">工作或实习经历<small>权重 15%</small></div>
+                        <div class="bar"><div class="bar__fill" style="width:70%"></div></div>
+                        <div class="bar-row__value">70</div>
+                      </div>
+                      <div class="bar-row">
+                        <div class="bar-row__label">学历与经验要求<small>权重 10%</small></div>
+                        <div class="bar"><div class="bar__fill bar__fill--ok" style="width:80%"></div></div>
+                        <div class="bar-row__value">80</div>
+                      </div>
+                      <div class="bar-row">
+                        <div class="bar-row__label">加分技能<small>权重 5%</small></div>
+                        <div class="bar"><div class="bar__fill" style="width:68%"></div></div>
+                        <div class="bar-row__value">68</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 形态二：未评估（仅优化前一组） -->
+                <div data-switch-panel="ev" data-switch-target="pending" class="is-hidden">
+                  <div class="row mb-12">
+                    <span class="strong">优化前</span>
+                    <span class="small muted">75.75 分</span>
+                  </div>
+                  <div class="bar-row">
+                    <div class="bar-row__label">必备技能<small>权重 45%</small></div>
+                    <div class="bar"><div class="bar__fill bar__fill--ok" style="width:80%"></div></div>
+                    <div class="bar-row__value">80</div>
+                  </div>
+                  <div class="bar-row">
+                    <div class="bar-row__label">项目经历相关性<small>权重 25%</small></div>
+                    <div class="bar"><div class="bar__fill" style="width:75%"></div></div>
+                    <div class="bar-row__value">75</div>
+                  </div>
+                  <div class="bar-row">
+                    <div class="bar-row__label">工作或实习经历<small>权重 15%</small></div>
+                    <div class="bar"><div class="bar__fill" style="width:70%"></div></div>
+                    <div class="bar-row__value">70</div>
+                  </div>
+                  <div class="bar-row">
+                    <div class="bar-row__label">学历与经验要求<small>权重 10%</small></div>
+                    <div class="bar"><div class="bar__fill bar__fill--ok" style="width:80%"></div></div>
+                    <div class="bar-row__value">80</div>
+                  </div>
+                  <div class="bar-row">
+                    <div class="bar-row__label">加分技能<small>权重 5%</small></div>
+                    <div class="bar"><div class="bar__fill bar__fill--warn" style="width:50%"></div></div>
+                    <div class="bar-row__value">50</div>
+                  </div>
+                  <p class="small muted mt-12">优化后维度分将在「重新评估」后写入，与优化前逐项对比。</p>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- ③ 岗位要求分析 -->
+            <div class="card">
+              <div class="card__head">
+                <h2>岗位要求分析</h2>
+                <span class="card__sub">优化时使用的岗位分析快照，只读</span>
+              </div>
+              <div class="card__body">
+                <p style="line-height:1.85">
+                  该岗位面向 2026 届计算机相关专业毕业生，重点关注 Java 后端开发基础与主流框架使用能力。
+                  必备项集中在校招常见技术栈，加分项偏向工程实践（容器化、部署、中间件）；
+                  学历要求明确为本科及以上，未对实习经历提出硬性要求。
+                </p>
+                <div class="divider"></div>
+
+                <h3 class="mb-12">岗位职责</h3>
+                <ul class="bullets mb-20">
+                  <li>参与核心业务系统的后端开发，负责接口设计与实现</li>
+                  <li>配合前端完成联调，参与需求评审与技术方案讨论</li>
+                  <li>参与系统性能优化与线上问题排查</li>
+                </ul>
+
+                <div class="grid grid--2 mb-20">
+                  <div>
+                    <div class="row mb-8">
+                      <span class="strong">必备技能</span>
+                      <span class="small muted">共 4 项</span>
+                    </div>
+                    <div class="skill-list">
+                      <span class="tag tag--lg tag--brand">Java</span>
+                      <span class="tag tag--lg tag--brand">Spring Boot</span>
+                      <span class="tag tag--lg tag--brand">MyBatis</span>
+                      <span class="tag tag--lg tag--brand">MySQL</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="row mb-8">
+                      <span class="strong">加分技能</span>
+                      <span class="small muted">共 4 项</span>
+                    </div>
+                    <div class="skill-list">
+                      <span class="tag tag--lg">Redis</span>
+                      <span class="tag tag--lg">消息队列</span>
+                      <span class="tag tag--lg">Docker</span>
+                      <span class="tag tag--lg">Linux</span>
+                    </div>
+                  </div>
+                </div>
+
+                <dl class="desc" style="grid-template-columns:96px minmax(0,1fr)">
+                  <dt>技术栈</dt>
+                  <dd>
+                    <div class="skill-list">
+                      <span class="tag">Java</span><span class="tag">Spring Boot</span>
+                      <span class="tag">MyBatis</span><span class="tag">MySQL</span>
+                      <span class="tag">Git</span>
+                    </div>
+                  </dd>
+                  <dt>软技能</dt>
+                  <dd>
+                    <div class="skill-list">
+                      <span class="tag">沟通协作</span><span class="tag">主动学习</span>
+                      <span class="tag">文档意识</span>
+                    </div>
+                  </dd>
+                  <dt>学历要求</dt><dd>本科及以上，计算机相关专业</dd>
+                  <dt>经验要求</dt><dd>2026 届毕业生，未要求实习经历</dd>
+                </dl>
+              </div>
+            </div>
+
+            <!-- ④ 简历优势 -->
+            <div class="card">
+              <div class="card__head">
+                <h2>简历优势</h2>
+                <span class="card__sub">来自简历分析快照</span>
+              </div>
+              <div class="card__body">
+                <ul class="bullets bullets--ok">
+                  <li>有完整的 Java 后端项目经历（校园二手交易平台），涵盖接口设计与数据库设计。</li>
+                  <li>技能清单与岗位必备项重合度高，Java / Spring Boot / MyBatis / MySQL 均有证据支撑。</li>
+                  <li>项目描述具体到功能模块与个人职责，便于招聘方快速判断工作内容。</li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- ⑤ 岗位要求 × 经历对应 -->
+            <div class="card">
+              <div class="card__head">
+                <h2>岗位要求 × 经历对应</h2>
+                <span class="card__sub">逐项标注对应维度，证据来自匹配账本</span>
+              </div>
+              <div class="card__body">
+                <div class="grid grid--2">
+
+                  <div>
+                    <div class="row mb-12">
+                      <span class="strong" style="color:var(--ok)">已匹配</span>
+                      <span class="tag tag--ok">2 项</span>
+                    </div>
+                    <div style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:10px">
+                      <div class="row mb-8">
+                        <span class="strong">Java / Spring Boot</span>
+                        <span class="spacer"></span>
+                        <span class="tag tag--brand">必备技能</span>
+                      </div>
+                      <p class="small muted">项目经历中有对应的接口开发描述，可直接作为面试素材。</p>
+                    </div>
+                    <div style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px">
+                      <div class="row mb-8">
+                        <span class="strong">MySQL 数据库设计</span>
+                        <span class="spacer"></span>
+                        <span class="tag tag--brand">项目经历相关性</span>
+                      </div>
+                      <p class="small muted">校园二手交易平台的表结构设计与查询描述完整，证据充分。</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div class="row mb-12">
+                      <span class="strong" style="color:var(--warn)">部分匹配</span>
+                      <span class="tag tag--warn">1 项</span>
+                    </div>
+                    <div style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px">
+                      <div class="row mb-8">
+                        <span class="strong">项目部署经验</span>
+                        <span class="spacer"></span>
+                        <span class="tag tag--warn">项目经历相关性</span>
+                      </div>
+                      <p class="small muted">有相关表述，但缺少具体的环境、步骤或结果，证据不充分。</p>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+            <!-- ⑥ 能力差距与待确认问题 -->
+            <div class="card">
+              <div class="card__head">
+                <h2>能力差距与待确认问题</h2>
+                <span class="card__sub">差距按对总分的影响排序</span>
+              </div>
+              <div class="card__body">
+
+                <div class="alert alert--warn mb-16">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>
+                  <div>
+                    <strong>差额反映的是简历与岗位描述之间的信息缺口，不代表你不具备该能力。</strong>
+                    如果你确实做过但没写进简历，补充描述同样能提高匹配度。
+                  </div>
+                </div>
+
+                <!-- 差距项 1 -->
+                <div style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px">
+                  <div class="row mb-8">
+                    <span class="strong">Docker / 容器化部署</span>
+                    <span class="tag tag--danger">必备相关</span>
+                    <span class="spacer"></span>
+                    <span class="small muted">影响维度：项目经历相关性</span>
+                  </div>
+                  <p class="small muted">
+                    岗位把「熟悉 Docker、有服务器部署经验」列为加分项，且岗位职责涉及线上问题排查，
+                    简历中未找到相关证据；优化稿保留原样，未替你编造这部分经历。
+                  </p>
+                </div>
+
+                <!-- 差距项 2 -->
+                <div style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px">
+                  <div class="row mb-8">
+                    <span class="strong">Redis / 中间件使用场景</span>
+                    <span class="tag tag--warn">加分项</span>
+                    <span class="spacer"></span>
+                    <span class="small muted">影响维度：加分技能</span>
+                  </div>
+                  <p class="small muted">
+                    Redis 只出现在技能列表中，项目经历里没有使用场景。面试中这类「列了但说不清」的技能容易被追问。
+                  </p>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="row mb-12" style="flex-wrap:wrap">
+                  <span class="strong">待确认问题</span>
+                  <span class="small muted">以下信息简历中未提供，请确认后再补充，系统不会替你编造</span>
+                </div>
+
+                <!-- 待确认问题卡片组（gapQuestions） -->
+                <div style="border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:10px">
+                  <div class="row" style="align-items:flex-start;gap:10px">
+                    <span class="tag tag--warn" style="flex:0 0 auto;margin-top:1px">待确认</span>
+                    <span class="small" style="line-height:1.65">校园二手交易平台的后端 QPS 大约是多少？日均请求量级怎样？</span>
+                  </div>
+                </div>
+                <div style="border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:10px">
+                  <div class="row" style="align-items:flex-start;gap:10px">
+                    <span class="tag tag--warn" style="flex:0 0 auto;margin-top:1px">待确认</span>
+                    <span class="small" style="line-height:1.65">你提到的项目部署经历，用的是什么服务器与操作系统环境？具体完成过哪些步骤？</span>
+                  </div>
+                </div>
+                <div style="border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:var(--radius-sm);padding:12px 14px">
+                  <div class="row" style="align-items:flex-start;gap:10px">
+                    <span class="tag tag--warn" style="flex:0 0 auto;margin-top:1px">待确认</span>
+                    <span class="small" style="line-height:1.65">Redis 在项目中的使用场景是什么（缓存了什么数据、解决什么问题）？</span>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- ⑦ 逐项修改说明 -->
+            <div class="card">
+              <div class="card__head">
+                <h2>逐项修改说明</h2>
+                <span class="card__sub">模型只做四类动作：改写 / 补关键词 / 调整顺序 / 精简</span>
+              </div>
+              <div class="card__body">
+
+                <!-- 第 1 条：改写 -->
+                <div style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px">
+                  <div class="row mb-8">
+                    <span class="tag tag--brand">改写</span>
+                    <span class="strong">个人总结</span>
+                    <span class="spacer"></span>
+                    <span class="small muted">1 / 4</span>
+                  </div>
+                  <p class="small muted mb-12">把「熟悉 Java 开发」换用与岗位一致的表述，突出 Spring Boot 与接口设计经验——只调整表述，未新增事实。</p>
+                  <div class="grid grid--2">
+                    <div>
+                      <div class="small muted mb-8">修改前</div>
+                      <div style="border:1px solid var(--line);background:#f8fafc;border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;line-height:1.7">熟悉 Java 开发，了解常用框架，能独立完成功能开发。</div>
+                    </div>
+                    <div>
+                      <div class="small muted mb-8">修改后</div>
+                      <div style="border:1px solid var(--ok-line);background:var(--ok-bg);border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;line-height:1.7">熟悉 Java 后端开发，掌握 Spring Boot 接口设计与实现，能独立完成模块开发。</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 第 2 条：补关键词 -->
+                <div style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px">
+                  <div class="row mb-8">
+                    <span class="tag tag--ok">补关键词</span>
+                    <span class="strong">项目经历</span>
+                    <span class="spacer"></span>
+                    <span class="small muted">2 / 4</span>
+                  </div>
+                  <p class="small muted mb-12">简历中实际做过后端接口开发，补上岗位要求的「接口设计」「数据库设计」关键词，未添加新经历。</p>
+                  <div class="grid grid--2">
+                    <div>
+                      <div class="small muted mb-8">修改前</div>
+                      <div style="border:1px solid var(--line);background:#f8fafc;border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;line-height:1.7">负责二手交易平台后端的接口开发与数据库表设计，配合前端调试。</div>
+                    </div>
+                    <div>
+                      <div class="small muted mb-8">修改后</div>
+                      <div style="border:1px solid var(--ok-line);background:var(--ok-bg);border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;line-height:1.7">负责二手交易平台后端的接口设计与开发，完成 MySQL 数据库表设计，配合前端联调。</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 第 3 条：调整顺序 -->
+                <div style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px">
+                  <div class="row mb-8">
+                    <span class="tag tag--info">调整顺序</span>
+                    <span class="strong">项目经历</span>
+                    <span class="spacer"></span>
+                    <span class="small muted">3 / 4</span>
+                  </div>
+                  <p class="small muted mb-12">把与岗位最相关的 Java 后端项目前置，让招聘方最先看到匹配证据。</p>
+                  <div class="grid grid--2">
+                    <div>
+                      <div class="small muted mb-8">修改前</div>
+                      <div style="border:1px solid var(--line);background:#f8fafc;border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;line-height:1.7">1. 数据分析可视化平台<br>2. 校园二手交易平台</div>
+                    </div>
+                    <div>
+                      <div class="small muted mb-8">修改后</div>
+                      <div style="border:1px solid var(--ok-line);background:var(--ok-bg);border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;line-height:1.7">1. 校园二手交易平台<br>2. 数据分析可视化平台</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 第 4 条：精简 -->
+                <div style="border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px">
+                  <div class="row mb-8">
+                    <span class="tag">精简</span>
+                    <span class="strong">技能清单</span>
+                    <span class="spacer"></span>
+                    <span class="small muted">4 / 4</span>
+                  </div>
+                  <p class="small muted mb-12">删去与岗位无关、且不产生匹配证据的条目，压缩篇幅。</p>
+                  <div class="grid grid--2">
+                    <div>
+                      <div class="small muted mb-8">修改前</div>
+                      <div style="border:1px solid var(--line);background:#f8fafc;border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;line-height:1.7">Java、Spring Boot、MyBatis、MySQL、Python、PhotoShop、Office 办公软件</div>
+                    </div>
+                    <div>
+                      <div class="small muted mb-8">修改后</div>
+                      <div style="border:1px solid var(--ok-line);background:var(--ok-bg);border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;line-height:1.7">Java、Spring Boot、MyBatis、MySQL</div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- ⑧ 简历对比与编辑 -->
+            <div class="card">
+              <div class="card__head">
+                <h2>简历对比与编辑</h2>
+                <span class="card__sub">原始简历只读；编辑只影响优化稿，不会改动原始简历</span>
+              </div>
+              <div class="card__body">
+                <div class="grid grid--2">
+
+                  <div>
+                    <div class="row mb-8">
+                      <span class="strong">原始简历</span>
+                      <span class="small muted">只读</span>
+                    </div>
+                    <div style="border:1px solid var(--line);border-radius:var(--radius-sm);background:#f8fafc;padding:14px;font-size:13px;line-height:1.8;white-space:pre-line;max-height:440px;overflow:auto">Java后端简历（v2 · 只读快照）
+
+【个人总结】
+熟悉 Java 开发，了解常用框架，能独立完成功能开发。
+
+【技能】
+Java、Spring Boot、MyBatis、MySQL、Python、PhotoShop、Office 办公软件
+
+【项目经历】
+1. 数据分析可视化平台（2025.03–2025.06）
+   负责数据清洗与统计接口开发。
+2. 校园二手交易平台（2025.09–2026.01）
+   负责二手交易平台后端的接口开发与数据库表设计，配合前端调试。</div>
+                  </div>
+
+                  <div>
+                    <div class="row mb-8">
+                      <span class="strong">优化稿</span>
+                      <span class="small muted">可编辑 · 保存后按当前稿重新评估</span>
+                    </div>
+                    <textarea class="textarea" style="min-height:440px;font-size:13px;line-height:1.8"># 张三
+
+## 个人总结
+熟悉 Java 后端开发，掌握 Spring Boot 接口设计与实现，能独立完成模块开发。
+
+## 技能
+Java、Spring Boot、MyBatis、MySQL
+
+## 项目经历
+1. 校园二手交易平台（2025.09–2026.01）
+   负责后端接口设计与开发，完成 MySQL 数据库表设计，配合前端联调。
+2. 数据分析可视化平台（2025.03–2025.06）
+   负责数据清洗与统计接口开发。</textarea>
+                  </div>
+
+                </div>
+
+                <div class="row mt-16" style="gap:8px;flex-wrap:wrap">
+                  <button class="btn btn--primary">保存编辑</button>
+                  <button class="btn">重新评估</button>
+                  <button class="btn">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="M8 12l4 4 4-4"/><path d="M5 20h14"/></svg>
+                    导出 DOCX
+                  </button>
+                  <button class="btn" data-modal-open="md-history">历史版本</button>
+                </div>
+                <p class="small muted mt-12">保存编辑只写入「当前稿」，模型原稿保持原样、随时可回退；导出的是当前稿。</p>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ================= 右：信息栏 ================= -->
+          <div>
+            <div class="card">
+              <div class="card__head"><h2>优化依据</h2></div>
+              <div class="card__body">
+                <dl class="desc">
+                  <dt>简历</dt><dd>Java后端简历 · v2</dd>
+                  <dt>岗位</dt><dd>Java 后端开发实习生</dd>
+                  <dt>公司</dt><dd>示例科技</dd>
+                  <dt>岗位分析</dt><dd>v1</dd>
+                  <dt>匹配记录</dt><dd>#501 · 75.75 分（优化前评估）</dd>
+                  <dt>评分规则</dt><dd>v1（固定权重，规则计算）</dd>
+                  <dt>模型</dt><dd>deepseek-flash</dd>
+                  <dt>优化时间</dt><dd>2026-10-13 15:04</dd>
+                  <dt>最近评估</dt><dd>2026-10-13 15:31</dd>
+                </dl>
+
+                <div class="divider"></div>
+
+                <div class="alert">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+                  <div>优化稿的重新评估与优化前使用<strong>同一份岗位分析、同一评分规则</strong>，保证前后可比。</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card__head"><h2>关联资源</h2></div>
+              <div class="card__body card__body--tight">
+                <div class="item" style="padding:10px 0">
+                  <div class="item__main">
+                    <div class="item__title">Java后端简历</div>
+                    <div class="item__meta">原始简历 · 优化不覆盖该文件</div>
+                  </div>
+                  <a class="btn btn--sm" href="resume-analysis.html">查看</a>
+                </div>
+                <div class="item" style="padding:10px 0">
+                  <div class="item__main">
+                    <div class="item__title">Java 后端开发实习生</div>
+                    <div class="item__meta">岗位与分析快照</div>
+                  </div>
+                  <a class="btn btn--sm" href="job-analysis.html">查看分析</a>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card__head"><h2>下一步</h2></div>
+              <div class="card__body card__body--tight">
+                <a class="item" href="interview.html" style="padding:10px 0">
+                  <div class="item__icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15a2 2 0 0 1-2 2H8l-4 3V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/><path d="M9 10h6"/></svg>
+                  </div>
+                  <div class="item__main">
+                    <div class="item__title">针对待确认问题做模拟面试</div>
+                    <div class="item__meta">重点练习被追问的技能项</div>
+                  </div>
+                </a>
+                <a class="item" href="agent.html" style="padding:10px 0">
+                  <div class="item__icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 4h6"/><circle cx="9" cy="14" r="1.2"/><circle cx="15" cy="14" r="1.2"/></svg>
+                  </div>
+                  <div class="item__main">
+                    <div class="item__title">问智能体「待确认问题怎么补」</div>
+                    <div class="item__meta">结合岗位要求给出补充建议</div>
+                  </div>
+                </a>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <p class="small muted mt-24" style="text-align:center">
+          匹配分数反映简历与岗位描述之间的信息匹配程度，不代表录用概率或招聘结果预测；优化只改表述，不改变事实。
+        </p>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 历史版本 ===== -->
+<div class="overlay" id="md-history" style="display:none">
+  <div class="modal">
+    <div class="modal__head">
+      <div style="flex:1">
+        <h2>历史版本</h2>
+        <p class="small muted mt-8">保存编辑时自动留档（最多 10 版）；回填只填充编辑区，不直接保存</p>
+      </div>
+      <button class="modal__close" data-modal-close>×</button>
+    </div>
+    <div class="modal__body">
+      <div class="item-list" style="border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden">
+        <div class="item">
+          <div class="item__main">
+            <div class="item__title">当前稿 · 2026-10-13 15:36</div>
+            <div class="item__meta">在「项目经历」中补充了 QPS 数据后的版本</div>
+          </div>
+          <button class="btn btn--sm">回填</button>
+        </div>
+        <div class="item">
+          <div class="item__main">
+            <div class="item__title">模型原稿 · 2026-10-13 15:04</div>
+            <div class="item__meta">初始生成的优化稿（不可变，始终可回退）</div>
+          </div>
+          <button class="btn btn--sm">回填</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-modal-close>关闭</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/prototype.js"></script>
+</body>
+</html>

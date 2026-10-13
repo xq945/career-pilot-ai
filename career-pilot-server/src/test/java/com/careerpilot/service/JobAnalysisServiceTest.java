@@ -34,10 +34,10 @@ import com.careerpilot.mapper.JobAnalysisMapper;
 import com.careerpilot.service.ai.JobAiService;
 
 /**
- * 岗位分析业务编排的单测（《测试与验收方案》1.1：source_hash 复用）。
+ * 岗位分析业务编排的单测（《测试与验收方案》1.1：分析版本与落库）。
  *
  * 在 M4 简历分析同款用例之外，本类的增量是岗位特有的两类场景：
- * - **版本递增 v1→v2**：M5 是版本递增第一次在真实业务路径出现（简历文本不可变，M4 恒复用）；
+ * - **版本递增 v1→v2**：描述变化后生成新版本（2026-10-13 起描述未变同样生成新版本）；
  * - **重试耗尽的兜底必须同源**：M4 的无条件兜底依赖"简历不可变"，岗位不成立——
  *   见 {@link #analyze_retryExhausted_differentSource_failsInsteadOfReturningStaleResult}。
  */
@@ -74,21 +74,27 @@ class JobAnalysisServiceTest {
         verifyNoInteractions(jobAiService, jobAnalysisMapper);
     }
 
-    // ---------------------------------------------------------------- 复用
+    // ---------------------------------------------------------------- 每次重新生成（2026-10-13 语义变更）
 
     @Test
-    void analyze_sameSourceHash_reusesResultAndNeverCallsModel() {
+    void analyze_descriptionUnchanged_stillGeneratesNewVersion() {
         Job job = job(DESCRIPTION);
-        JobAnalysis latest = analysis(10L, 5L, 1, sha256(DESCRIPTION));
-        when(jobAnalysisMapper.selectOne(any())).thenReturn(latest);
+        // 库里已有同源分析（v1），但「重新分析」不复用：仍调用模型并生成新版本
+        when(jobAnalysisMapper.selectOne(any())).thenReturn(analysis(null, 5L, 1, null));
+        when(jobAiService.analyze(DESCRIPTION)).thenReturn(aiResult("重新分析结果"));
+        when(jobAnalysisMapper.insert(any(JobAnalysis.class))).thenAnswer(invocation -> {
+            JobAnalysis inserted = invocation.getArgument(0);
+            inserted.setId(41L);
+            return 1;
+        });
 
         JobAnalysisDetail detail = service.analyze(job);
 
-        assertThat(detail.getAnalysisId()).isEqualTo(10L);
-        assertThat(detail.getVersionNo()).isEqualTo(1);
-        // 描述未变化时模型未被调用（《开发顺序》M5 验证方式同 M4）
-        verifyNoInteractions(jobAiService);
-        verify(jobAnalysisMapper, never()).insert(any(JobAnalysis.class));
+        assertThat(detail.getAnalysisId()).isEqualTo(41L);
+        assertThat(detail.getVersionNo()).isEqualTo(2);
+        assertThat(detail.getSummary()).isEqualTo("重新分析结果");
+        // 描述未变化时模型仍被调用（与旧语义相反：《开发顺序》M5 验收标准已随拍板修订）
+        verify(jobAiService).analyze(DESCRIPTION);
     }
 
     // ---------------------------------------------------------------- 新版本
@@ -96,11 +102,8 @@ class JobAnalysisServiceTest {
     @Test
     void analyze_changedDescription_generatesNextVersion() {
         Job job = job(DESCRIPTION);
-        // 第一次 selectOne 是「查最新成功分析」（hash 不同 → 不复用），
-        // 第二次是 nextVersionNo（已有 v1 → 新版本 v2）
-        when(jobAnalysisMapper.selectOne(any()))
-                .thenReturn(analysis(10L, 5L, 1, sha256("旧版岗位描述")))
-                .thenReturn(analysis(null, 5L, 1, null));
+        // 唯一一次 selectOne 是 nextVersionNo（已有 v1 → 新版本 v2）
+        when(jobAnalysisMapper.selectOne(any())).thenReturn(analysis(null, 5L, 1, null));
         when(jobAiService.analyze(DESCRIPTION)).thenReturn(aiResult("新版本结果"));
         when(jobAnalysisMapper.insert(any(JobAnalysis.class))).thenAnswer(invocation -> {
             JobAnalysis inserted = invocation.getArgument(0);
@@ -160,9 +163,8 @@ class JobAnalysisServiceTest {
     @Test
     void analyze_retryExhausted_sameSourceFallback_returnsExistingResult() {
         Job job = job(DESCRIPTION);
-        // selectOne 调用序：① 复用判断（无历史）②③④ nextVersionNo ×3 ⑤ 兜底查询（同源，并发请求刚落库）
+        // selectOne 调用序：①②③ nextVersionNo ×3 ④ 兜底查询（同源，并发请求刚落库）
         when(jobAnalysisMapper.selectOne(any()))
-                .thenReturn(null)
                 .thenReturn(version(1)).thenReturn(version(1)).thenReturn(version(1))
                 .thenReturn(analysis(99L, 5L, 1, sha256(DESCRIPTION)));
         when(jobAiService.analyze(DESCRIPTION)).thenReturn(aiResult("并发结果"));
@@ -181,7 +183,6 @@ class JobAnalysisServiceTest {
         Job job = job(DESCRIPTION);
         // 兜底查询返回的是**异源**记录（基于旧版描述的分析）：岗位场景下不得当作本次结果返回
         when(jobAnalysisMapper.selectOne(any()))
-                .thenReturn(null)
                 .thenReturn(version(1)).thenReturn(version(1)).thenReturn(version(1))
                 .thenReturn(analysis(99L, 5L, 1, sha256("旧版岗位描述")));
         when(jobAiService.analyze(DESCRIPTION)).thenReturn(aiResult("本次结果"));
@@ -199,7 +200,7 @@ class JobAnalysisServiceTest {
     @Test
     void analyze_modelFailure_propagatesAndWritesNothing() {
         Job job = job(DESCRIPTION);
-        when(jobAnalysisMapper.selectOne(any())).thenReturn(null);
+        // 模型先于 nextVersionNo（selectOne）抛出，无需打桩版本查询
         when(jobAiService.analyze(DESCRIPTION)).thenThrow(BusinessException.aiUnavailable("模型不可用"));
 
         assertThatThrownBy(() -> service.analyze(job))

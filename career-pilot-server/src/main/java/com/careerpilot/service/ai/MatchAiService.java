@@ -20,6 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 import com.careerpilot.ai.AiCallResult;
 import com.careerpilot.ai.AiCallTemplate;
 import com.careerpilot.ai.StructuredOutputSanitizer;
+import com.careerpilot.ai.WordingGuard;
 import com.careerpilot.dto.MatchDimension;
 import com.careerpilot.dto.MatchDimensionScore;
 import com.careerpilot.dto.ai.MatchExplanationAiOutput;
@@ -54,11 +55,6 @@ public class MatchAiService {
     private static final int SUGGESTION_LIMIT = 20;
 
     private static final int SUMMARY_LIMIT = 2000;
-
-    /** 措辞守卫的禁用词（断言能力 / 录用概率类，《前端原型设计》5.8 硬性要求）；命中即丢弃该条 */
-    private static final List<String> FORBIDDEN_PHRASES = List.of(
-            "不具备", "没有该能力", "没有这项能力", "没有这项技能",
-            "录用概率", "通过率", "招聘结果预测", "成功率");
 
     /** 用户消息中 JSON 块的序列化器（只序列化自建的 Map/DTO，不动实体——避免排查字段进入模型上下文） */
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();
@@ -193,8 +189,8 @@ public class MatchAiService {
             log.warn("匹配解释清洗：丢弃约定外字段 scene={} 字段名={}", SCENE, unknown.keySet());
         }
 
-        output.setSummary(guardText(StructuredOutputSanitizer.limitText(
-                output.getSummary(), SUMMARY_LIMIT, "summary", SCENE), "summary"));
+        output.setSummary(WordingGuard.guard(StructuredOutputSanitizer.limitText(
+                output.getSummary(), SUMMARY_LIMIT, "summary", SCENE), SCENE, "summary"));
 
         output.setSuggestions(sanitizeSuggestions(output.getSuggestions()));
 
@@ -216,7 +212,7 @@ public class MatchAiService {
                 log.warn("匹配解释清洗：dimension 越界置 null scene={} field={}", SCENE, field);
                 item.setDimension(null);
             }
-            if (guardText(item.getText(), field) == null) {
+            if (WordingGuard.guard(item.getText(), SCENE, field) == null) {
                 continue;
             }
             kept.add(item);
@@ -232,27 +228,12 @@ public class MatchAiService {
         }
         List<String> kept = new ArrayList<>(limited.size());
         for (String suggestion : limited) {
-            String guarded = guardText(suggestion, "suggestions");
+            String guarded = WordingGuard.guard(suggestion, SCENE, "suggestions");
             if (guarded != null && !guarded.isBlank()) {
                 kept.add(guarded);
             }
         }
         return kept;
-    }
-
-    /** 措辞守卫：命中禁用词（断言能力 / 录用概率类）时丢弃该文本并记 WARN */
-    private static String guardText(String text, String field) {
-        if (text == null) {
-            return null;
-        }
-        for (String forbidden : FORBIDDEN_PHRASES) {
-            if (text.contains(forbidden)) {
-                log.warn("匹配解释清洗：措辞守卫命中，已丢弃文本 scene={} field={} 禁用词={}",
-                        SCENE, field, forbidden);
-                return null;
-            }
-        }
-        return text;
     }
 
     /**

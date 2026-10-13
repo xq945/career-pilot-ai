@@ -139,7 +139,6 @@ async function handleSubmit() {
 <template>
   <AuthLayout>
     <h2 class="auth__title">创建账号</h2>
-    <p class="auth__desc">注册后即可上传简历并开始 AI 分析</p>
 
     <el-alert
       v-if="errorMessage"
@@ -160,7 +159,7 @@ async function handleSubmit() {
       <el-form-item label="用户名" prop="username" :error="fieldErrors.username">
         <el-input
           v-model="form.username"
-          placeholder="3–50 个字符，全站唯一"
+          placeholder="3–50 个字符"
           autocomplete="username"
           @input="clearFieldError('username')"
         />

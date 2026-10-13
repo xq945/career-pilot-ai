@@ -4,9 +4,9 @@
  * 覆盖《开发顺序》M4 的前端验收与《前端原型设计》§5.4／§4.3 对应的页面行为：
  * 列表页分析入口（发起 / 重新分析 / 查看分析）、确认弹窗、AiWaiting 等待态、
  * 结果渲染（概述 / 技能卡 / 优势 / 待改进 / 建议 / 分析信息）、
- * 复用路径（重新分析内容未变 → 秒回且版本不变）、未分析空态、错误态。
+ * 重新分析路径（内容未变 → 重新生成新版本）、未分析空态、错误态。
  *
- * 接口层的复用证据、50200/50201 与越权矩阵由 curl 验证（见《验证记录》§5.1），
+ * 接口层的版本递增证据、50200/50201 与越权矩阵由 curl 验证（见《验证记录》§5.1），
  * 本脚本只补浏览器独有的部分。**本脚本会消耗真实模型 token（一次完整分析）**。
  *
  * 前置条件：后端（8080，真实 API Key）与前端 dev server（5173）都已启动。
@@ -15,7 +15,7 @@
  *   node tools/e2e/analysis-flow.mjs
  *   node tools/e2e/analysis-flow.mjs --shots ./shots
  */
-import { closeBrowser, connect, createChecker, launchBrowser, sleep } from './cdp.mjs'
+import { closeBrowser, connect, createChecker, launchBrowser } from './cdp.mjs'
 import { buildTxt } from './fixtures.mjs'
 
 // ---------------------------------------------------------------- 参数
@@ -207,8 +207,8 @@ try {
 
   await page.waitFor(MESSAGE_BOX_VISIBLE, { label: '自动弹出确认框', timeout: 15000 })
   const confirmText = await messageBoxText()
-  check('③ 进入后自动弹出确认框且说明耗时与复用机制',
-    confirmText.includes('发起 AI 分析') && confirmText.includes('10–30 秒') && confirmText.includes('复用'),
+  check('③ 进入后自动弹出确认框且说明耗时',
+    confirmText.includes('发起 AI 分析') && confirmText.includes('10–30 秒'),
     confirmText.replace(/\s+/g, ' ').slice(0, 80))
   await shot('02-confirm-dialog')
 
@@ -263,20 +263,17 @@ try {
     headTagsAfter.includes('已分析'), headTagsAfter.join('/'))
   await shot('04-analysis-result')
 
-  // ------------------------------------------------------------ ⑤ 重新分析（复用路径）
+  // ------------------------------------------------------------ ⑤ 重新分析（内容未变 → 重新生成）
 
-  const reanalyzeStart = Date.now()
   await clickPageButton('重新分析')
   await page.waitFor(MESSAGE_BOX_VISIBLE, { label: '重新分析确认框', timeout: 10000 })
   await clickMessageBoxConfirm()
-  await page.waitFor(`!(${MESSAGE_BOX_VISIBLE})`, { label: '确认框关闭', timeout: 15000 })
-  await page.waitFor(`!!document.querySelector('.summary')`, { label: '结果仍在', timeout: 15000 })
-  await sleep(500)
-  const reanalyzeElapsed = Date.now() - reanalyzeStart
+  await page.waitFor(`!!document.querySelector('.ai-waiting')`, { label: '等待态出现', timeout: 10000 })
+  console.log(`   等待真实模型重新分析（最长 ${ANALYSIS_TIMEOUT / 1000} 秒）…`)
+  await page.waitFor(`!document.querySelector('.ai-waiting')`, { label: '重新分析完成', timeout: ANALYSIS_TIMEOUT })
   const sideTextAfter = await page.textOf('.layout__side')
-  check('⑥ 重新分析（内容未变）秒回且版本仍为 v1（复用）',
-    reanalyzeElapsed < 10000 && sideTextAfter.includes('v1'),
-    `${reanalyzeElapsed}ms`)
+  check('⑥ 重新分析（内容未变）生成新版本 v2（不再复用）',
+    sideTextAfter.includes('v2'), sideTextAfter.replace(/\s+/g, ' ').slice(0, 70))
 
   // ------------------------------------------------------------ ⑥ 返回列表（联动）
 
@@ -336,7 +333,7 @@ try {
   await page.waitFor(`!(${MESSAGE_BOX_VISIBLE})`, { label: '取消后弹窗关闭', timeout: 10000 })
   const emptyText = await page.textOf('.empty')
   check('⑨ 取消后停留在未分析空态（有「发起 AI 分析」入口）',
-    emptyText.includes('还没有做过 AI 分析') && emptyText.includes('岗位匹配的前置条件'),
+    emptyText.includes('还没有做过 AI 分析') && emptyText.includes('简历定向优化的前置条件'),
     emptyText.replace(/\s+/g, ' ').slice(0, 60))
   await shot('06-unanalyzed-empty')
 

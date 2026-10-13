@@ -84,7 +84,7 @@ const NAV_GROUPS = [
   {
     label: 'AI 分析与练习',
     items: [
-      { key: 'match', text: '岗位匹配', href: 'match.html', icon: 'match' },
+      { key: 'optimization', text: '简历定向优化', href: 'optimization.html', icon: 'match' },
       { key: 'interview', text: 'AI 面试', href: 'interview.html', icon: 'interview' },
     ],
   },

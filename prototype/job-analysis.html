@@ -151,12 +151,12 @@
               <div class="card">
                 <div class="card__head"><h2>下一步</h2></div>
                 <div class="card__body card__body--tight">
-                  <a class="item" href="match.html" style="padding:10px 0">
+                  <a class="item" href="optimization.html" style="padding:10px 0">
                     <div class="item__icon">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
                     </div>
                     <div class="item__main">
-                      <div class="item__title">用简历匹配这个岗位</div>
+                      <div class="item__title">按此岗位优化简历</div>
                       <div class="item__meta">需要简历也完成分析</div>
                     </div>
                   </a>
@@ -210,7 +210,7 @@
               </div>
             </div>
             <div class="card__foot">
-              <span class="small muted">此结果仍在匹配记录中可查，但不再用于生成新的匹配报告</span>
+              <span class="small muted">此结果仍在匹配记录中可查，但不再用于生成新的优化记录</span>
             </div>
           </div>
         </div>
@@ -223,7 +223,7 @@
                 <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></svg>
               </div>
               <h3 style="font-size:17px">这个岗位还没有分析过</h3>
-              <p>分析会从岗位描述中提取职责、必备技能与加分项，是生成匹配报告的必要前提。</p>
+              <p>分析会从岗位描述中提取职责、必备技能与加分项，是生成优化稿的必要前提。</p>
               <button class="btn btn--primary btn--lg" data-modal-open="md-reanalyze">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>
                 发起岗位分析
@@ -298,7 +298,7 @@
       <p class="mb-12">系统会按<strong>最新的岗位描述</strong>生成新的分析版本（v1 → v2），并用于后续匹配。</p>
       <div class="alert">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
-        <div>如果岗位描述没有变化，系统会直接复用已有结果，不重复调用模型。</div>
+        <div>每次重新分析都会生成新的分析版本，旧版本仍保留可追溯。</div>
       </div>
     </div>
     <div class="modal__foot">
