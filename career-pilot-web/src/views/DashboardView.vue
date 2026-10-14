@@ -107,26 +107,43 @@ function interviewFoot(s) {
   return '还没有面试记录'
 }
 
-/* ---------------------------------------------------------------- 最近匹配记录 */
+/* ---------------------------------------------------------------- 最近任务（M13） */
 
-const recentMatches = computed(() => summary.value?.recentMatches ?? [])
+const recentTasks = computed(() => summary.value?.recentTasks ?? [])
 
 const formatTime = (iso) => dayjs(iso).format('MM-DD HH:mm')
 
-/** 分数语义色（同匹配列表 §5.7）：≥80 绿、60–79 蓝、<60 橙 */
-function scoreType(score) {
-  if (score >= 80) {
-    return 'success'
-  }
-  if (score >= 60) {
-    return 'primary'
-  }
-  return 'warning'
+/** 任务类型 → 标签文案、标签色与跳转目标（分析类跳对应分析页，优化 / 面试跳详情） */
+const TASK_TYPES = {
+  RESUME_ANALYSIS: {
+    label: '简历分析',
+    tag: 'primary',
+    to: (task) => ({ name: 'resume-analysis', params: { id: task.refId } }),
+  },
+  JOB_ANALYSIS: {
+    label: '岗位分析',
+    tag: 'primary',
+    to: (task) => ({ name: 'job-analysis', params: { id: task.refId } }),
+  },
+  OPTIMIZATION: {
+    label: '简历优化',
+    tag: 'success',
+    to: (task) => ({ name: 'optimization-detail', params: { id: task.refId } }),
+  },
+  INTERVIEW: {
+    label: '模拟面试',
+    tag: 'warning',
+    to: (task) => ({ name: 'interview-session', params: { id: task.refId } }),
+  },
 }
 
-/** 进入简历定向优化（匹配报告页已随 M11 下线，行内不再提供跳转） */
-function goOptimize() {
-  router.push({ name: 'optimizations' })
+const taskMeta = (task) => TASK_TYPES[task.type] ?? { label: task.type, tag: 'info', to: null }
+
+function openTask(task) {
+  const meta = taskMeta(task)
+  if (meta.to) {
+    router.push(meta.to(task))
+  }
 }
 
 /* ---------------------------------------------------------------- 能力差距概览 */
@@ -188,35 +205,33 @@ const donePercent = computed(() => Math.round((doneCount.value / 6) * 100))
 
       <div class="columns">
         <div class="column">
-          <!-- 最近匹配记录 -->
+          <!-- 最近任务（M13：四类动态混合时间线，替代原「最近匹配记录」卡） -->
           <el-card shadow="never" class="card">
             <template #header>
               <div class="card__head">
-                <h2>最近匹配记录</h2>
-                <el-button size="small" text type="primary" @click="goOptimize">
-                  去简历优化
-                </el-button>
+                <h2>最近任务</h2>
+                <span class="card__sub">按时间倒序 · 点击进入</span>
               </div>
             </template>
 
-            <p v-if="recentMatches.length === 0" class="block-empty">
-              还没有匹配记录。到「简历定向优化」选择一份已分析的简历与目标岗位，
-              就能得到匹配分析与优化稿。
+            <p v-if="recentTasks.length === 0" class="block-empty">
+              还没有任务记录。上传简历并完成分析、录入岗位，或发起一次简历优化，
+              这里会按时间显示最近的动态。
             </p>
-            <div v-else class="match-list">
-              <div v-for="item in recentMatches" :key="item.id" class="match-row">
-                <div class="match-row__main">
-                  <div class="match-row__title">
-                    {{ item.jobName }}
-                  </div>
-                  <div class="match-row__meta">
-                    <template v-if="item.companyName">{{ item.companyName }} · </template>
-                    使用「{{ item.resumeName }}」 · {{ formatTime(item.createdAt) }}
-                  </div>
-                </div>
-                <el-tag :type="scoreType(item.matchScore)" size="small" effect="light">
-                  {{ item.matchScore }}
+            <div v-else class="task-list">
+              <div
+                v-for="(task, index) in recentTasks"
+                :key="`${task.type}-${task.refId}-${index}`"
+                class="task-row"
+                @click="openTask(task)"
+              >
+                <el-tag :type="taskMeta(task).tag" size="small" effect="light">
+                  {{ taskMeta(task).label }}
                 </el-tag>
+                <div class="task-row__title">
+                  {{ task.title }}
+                </div>
+                <span class="task-row__time">{{ formatTime(task.happenedAt) }}</span>
               </div>
             </div>
           </el-card>
@@ -394,32 +409,39 @@ const donePercent = computed(() => Math.round((doneCount.value / 6) * 100))
   color: var(--ink-400);
 }
 
-/* ---------------------------------------------------------------- 最近匹配 */
+/* ---------------------------------------------------------------- 最近任务（M13） */
 
-.match-row {
+.task-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 0;
+  gap: 10px;
+  padding: 10px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
 }
 
-.match-row + .match-row {
+.task-row + .task-row {
   border-top: 1px solid var(--line);
 }
 
-.match-row__main {
-  flex: 1;
-  min-width: 0;
+.task-row:hover {
+  background: var(--bg);
 }
 
-.match-row__title {
+.task-row__title {
+  flex: 1;
+  min-width: 0;
   font-size: 14px;
   font-weight: 500;
   color: var(--ink-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.match-row__meta {
-  margin-top: 2px;
+.task-row__time {
+  flex: 0 0 auto;
   font-size: 12px;
   color: var(--ink-400);
 }

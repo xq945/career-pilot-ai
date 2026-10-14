@@ -289,8 +289,8 @@ try {
   check('   准备清单 0/6（六步全部由计数字段推导）',
     (await page.textOf('.progress-row')).includes('已完成 0 / 6'),
     await page.textOf('.progress-row'))
-  check('   两个列表区块为空态引导文案',
-    (await page.evaluate(`document.body.innerText`)).includes('还没有匹配记录'))
+  check('   两个列表区块为空态引导文案（M13 起为「最近任务」卡）',
+    (await page.evaluate(`document.body.innerText`)).includes('还没有任务记录'))
   await shot('01-dashboard-empty')
 
   // ============================================================== ② 修改昵称（/profile）
@@ -461,7 +461,7 @@ try {
 
   await page.goto(`${BASE}/dashboard`)
   await page.waitFor(`document.querySelectorAll('.stat').length === 4`, { label: '仪表盘渲染', timeout: 20000 })
-  await page.waitFor(`document.querySelectorAll('.match-row').length >= 1`, { label: '最近匹配渲染', timeout: 20000 })
+  await page.waitFor(`document.querySelectorAll('.task-row').length >= 1`, { label: '最近任务渲染', timeout: 20000 })
 
   const finalCards = await cardTexts()
   check('⑩ 四卡数字与本次流程产生的数据一致（1 简历 / 1 岗位 / 1 匹配 / 1 面试）',
@@ -477,12 +477,18 @@ try {
     && (await page.textOf('.progress-row')).includes('100%'),
     await page.textOf('.progress-row'))
 
-  const matchRows = await page.evaluate(
-    `[...document.querySelectorAll('.match-row')].map((el) => el.innerText.replace(/\\n/g, ' '))`)
-  check('   最近匹配记录 1 行：含岗位名、简历名与报告分数',
-    matchRows.length === 1 && matchRows[0].includes(JOB_NAME) && matchRows[0].includes(RESUME_NAME)
-    && matchRows[0].includes(String(matchDetail.matchScore)),
-    matchRows.join(' | '))
+  // M13：「最近匹配记录」卡升级为「最近任务」卡（四类动态混合时间线）。
+  // 行数用 ≥4：⑨ 的智能体对话可能调用 analyzeResume 工具、追加一条真实的分析任务（正确行为）。
+  const taskRows = await page.evaluate(
+    `[...document.querySelectorAll('.task-row')].map((el) => el.innerText.replace(/\\n/g, ' '))`)
+  check('   最近任务 ≥4 行且覆盖四类：简历分析 / 岗位分析 / 简历优化 / 模拟面试',
+    taskRows.length >= 4
+    && taskRows.some((row) => row.includes('简历分析') && row.includes(RESUME_NAME))
+    && taskRows.some((row) => row.includes('岗位分析') && row.includes(JOB_NAME))
+    && taskRows.some((row) => row.includes('简历优化')
+      && row.includes(RESUME_NAME) && row.includes(JOB_NAME))
+    && taskRows.some((row) => row.includes('模拟面试')),
+    taskRows.join(' | '))
 
   // 能力差距概览与报告明细逐条一致（missing 在前、partial 在后、最多 3 条）
   const expectedGaps = [

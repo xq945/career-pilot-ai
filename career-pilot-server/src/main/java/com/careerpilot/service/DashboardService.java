@@ -1,6 +1,9 @@
 package com.careerpilot.service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +18,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.careerpilot.dto.DashboardGapItem;
 import com.careerpilot.dto.DashboardRecentMatch;
+import com.careerpilot.dto.DashboardRecentTask;
 import com.careerpilot.dto.DashboardSummary;
 import com.careerpilot.dto.ai.MatchItem;
 import com.careerpilot.entity.InterviewSession;
@@ -23,12 +27,14 @@ import com.careerpilot.entity.JobAnalysis;
 import com.careerpilot.entity.MatchRecord;
 import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
+import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.InterviewSessionMapper;
 import com.careerpilot.mapper.JobAnalysisMapper;
 import com.careerpilot.mapper.JobMapper;
 import com.careerpilot.mapper.MatchRecordMapper;
 import com.careerpilot.mapper.ResumeAnalysisMapper;
 import com.careerpilot.mapper.ResumeMapper;
+import com.careerpilot.mapper.ResumeOptimizationMapper;
 
 /**
  * 仪表盘汇总服务（《API接口设计》9.1）。
@@ -50,6 +56,21 @@ public class DashboardService {
     /** 最近匹配记录条数（9.1 定死 5） */
     private static final int RECENT_MATCH_LIMIT = 5;
 
+    /** 最近任务：每类取的条数（9.1，M13） */
+    private static final int RECENT_TASK_PER_KIND = 3;
+
+    /** 最近任务：合并后的总上限（9.1，M13） */
+    private static final int RECENT_TASK_LIMIT = 6;
+
+    /** 最近任务的类型取值（9.1，M13） */
+    private static final String TASK_TYPE_RESUME_ANALYSIS = "RESUME_ANALYSIS";
+
+    private static final String TASK_TYPE_JOB_ANALYSIS = "JOB_ANALYSIS";
+
+    private static final String TASK_TYPE_OPTIMIZATION = "OPTIMIZATION";
+
+    private static final String TASK_TYPE_INTERVIEW = "INTERVIEW";
+
     /** 能力差距概览条数上限（9.1 定死 3：missing 在前、partial 在后） */
     private static final int TOP_GAP_LIMIT = 3;
 
@@ -70,15 +91,19 @@ public class DashboardService {
 
     private final InterviewSessionMapper interviewSessionMapper;
 
+    private final ResumeOptimizationMapper resumeOptimizationMapper;
+
     public DashboardService(ResumeMapper resumeMapper, ResumeAnalysisMapper resumeAnalysisMapper,
                             JobMapper jobMapper, JobAnalysisMapper jobAnalysisMapper,
-                            MatchRecordMapper matchRecordMapper, InterviewSessionMapper interviewSessionMapper) {
+                            MatchRecordMapper matchRecordMapper, InterviewSessionMapper interviewSessionMapper,
+                            ResumeOptimizationMapper resumeOptimizationMapper) {
         this.resumeMapper = resumeMapper;
         this.resumeAnalysisMapper = resumeAnalysisMapper;
         this.jobMapper = jobMapper;
         this.jobAnalysisMapper = jobAnalysisMapper;
         this.matchRecordMapper = matchRecordMapper;
         this.interviewSessionMapper = interviewSessionMapper;
+        this.resumeOptimizationMapper = resumeOptimizationMapper;
     }
 
     /** 汇总（9.1）：12 个字段一次装配返回 */
@@ -107,6 +132,7 @@ public class DashboardService {
                 Wrappers.<InterviewSession>lambdaQuery()
                         .eq(InterviewSession::getUserId, userId)
                         .eq(InterviewSession::getStatus, InterviewSession.STATUS_COMPLETED))));
+        summary.setRecentTasks(recentTasks(userId));
         summary.setRecentMatches(recentMatches(userId));
         summary.setTopGaps(topGaps(userId));
         return summary;
@@ -248,6 +274,154 @@ public class DashboardService {
             gap.setDimension(item.getDimension());
             gaps.add(gap);
         }
+    }
+
+    // ---------------------------------------------------------------- 最近任务（9.1，M13）
+
+    /**
+     * 最近任务时间线：简历分析 / 岗位分析 / 优化 / 面试四类各取最近
+     * {@value #RECENT_TASK_PER_KIND} 条，合并后按时间倒序取前 {@value #RECENT_TASK_LIMIT} 条。
+     *
+     * <p>分析类任务只取**有效资源**（简历 / 岗位未被逻辑删除）的最新成功分析——任务线点击
+     * 会跳转对应资源页，已删除资源的任务会形成死链；优化与面试记录本身没有删除语义，
+     * 全量参与（其来源资源即使已删，详情页也能承载）。
+     *
+     * <p>排序：{@code happenedAt} 倒序（Java 稳定排序，同秒任务保持类型归集顺序，可断言）。
+     */
+    private List<DashboardRecentTask> recentTasks(Long userId) {
+        List<DashboardRecentTask> tasks = new ArrayList<>();
+        appendResumeAnalysisTasks(tasks, userId);
+        appendJobAnalysisTasks(tasks, userId);
+        appendOptimizationTasks(tasks, userId);
+        appendInterviewTasks(tasks, userId);
+        // nullsLast 为防御（DB 的 created_at NOT NULL，仅容错异常数据）：倒序、null 恒在末尾
+        tasks.sort(Comparator.nullsLast(
+                Comparator.comparing(DashboardRecentTask::getHappenedAt).reversed()));
+        return tasks.size() > RECENT_TASK_LIMIT
+                ? List.copyOf(tasks.subList(0, RECENT_TASK_LIMIT))
+                : tasks;
+    }
+
+    /** 简历分析任务：本人有效简历的最近成功分析（标题 = 简历名） */
+    private void appendResumeAnalysisTasks(List<DashboardRecentTask> tasks, Long userId) {
+        List<Resume> resumes = resumeMapper.selectList(Wrappers.<Resume>lambdaQuery()
+                .select(Resume::getId, Resume::getName)
+                .eq(Resume::getUserId, userId)
+                .eq(Resume::getStatus, Resume.STATUS_ACTIVE));
+        if (resumes.isEmpty()) {
+            return;
+        }
+        Map<Long, String> nameById = resumes.stream()
+                .collect(Collectors.toMap(Resume::getId, Resume::getName));
+        List<ResumeAnalysis> analyses = resumeAnalysisMapper.selectList(Wrappers.<ResumeAnalysis>lambdaQuery()
+                .select(ResumeAnalysis::getResumeId, ResumeAnalysis::getCreatedAt)
+                .in(ResumeAnalysis::getResumeId, nameById.keySet())
+                .eq(ResumeAnalysis::getStatus, ResumeAnalysis.STATUS_SUCCESS)
+                .orderByDesc(ResumeAnalysis::getCreatedAt)
+                .orderByDesc(ResumeAnalysis::getId)
+                .last("LIMIT " + RECENT_TASK_PER_KIND));
+        for (ResumeAnalysis analysis : analyses) {
+            tasks.add(task(TASK_TYPE_RESUME_ANALYSIS, nameById.get(analysis.getResumeId()),
+                    analysis.getResumeId(), analysis.getCreatedAt()));
+        }
+    }
+
+    /** 岗位分析任务：本人有效岗位的最近成功分析（标题 = 岗位名） */
+    private void appendJobAnalysisTasks(List<DashboardRecentTask> tasks, Long userId) {
+        List<Job> jobs = jobMapper.selectList(Wrappers.<Job>lambdaQuery()
+                .select(Job::getId, Job::getJobName)
+                .eq(Job::getUserId, userId)
+                .eq(Job::getStatus, Job.STATUS_ACTIVE));
+        if (jobs.isEmpty()) {
+            return;
+        }
+        Map<Long, String> nameById = jobs.stream()
+                .collect(Collectors.toMap(Job::getId, Job::getJobName));
+        List<JobAnalysis> analyses = jobAnalysisMapper.selectList(Wrappers.<JobAnalysis>lambdaQuery()
+                .select(JobAnalysis::getJobId, JobAnalysis::getCreatedAt)
+                .in(JobAnalysis::getJobId, nameById.keySet())
+                .eq(JobAnalysis::getStatus, JobAnalysis.STATUS_SUCCESS)
+                .orderByDesc(JobAnalysis::getCreatedAt)
+                .orderByDesc(JobAnalysis::getId)
+                .last("LIMIT " + RECENT_TASK_PER_KIND));
+        for (JobAnalysis analysis : analyses) {
+            tasks.add(task(TASK_TYPE_JOB_ANALYSIS, nameById.get(analysis.getJobId()),
+                    analysis.getJobId(), analysis.getCreatedAt()));
+        }
+    }
+
+    /** 优化任务：标题为「{简历名} · {岗位名}」（名称不过滤 status，源删除后仍显示） */
+    private void appendOptimizationTasks(List<DashboardRecentTask> tasks, Long userId) {
+        List<ResumeOptimization> optimizations = resumeOptimizationMapper.selectList(
+                Wrappers.<ResumeOptimization>lambdaQuery()
+                        .select(ResumeOptimization::getId, ResumeOptimization::getResumeId,
+                                ResumeOptimization::getJobId, ResumeOptimization::getCreatedAt)
+                        .eq(ResumeOptimization::getUserId, userId)
+                        .orderByDesc(ResumeOptimization::getCreatedAt)
+                        .orderByDesc(ResumeOptimization::getId)
+                        .last("LIMIT " + RECENT_TASK_PER_KIND));
+        if (optimizations.isEmpty()) {
+            return;
+        }
+        Map<Long, String> resumeNames = resumeNamesByIds(optimizations.stream()
+                .map(ResumeOptimization::getResumeId).distinct().toList());
+        Map<Long, String> jobNames = jobNamesByIds(optimizations.stream()
+                .map(ResumeOptimization::getJobId).distinct().toList());
+        for (ResumeOptimization optimization : optimizations) {
+            String title = resumeNames.get(optimization.getResumeId()) + " · "
+                    + jobNames.get(optimization.getJobId());
+            tasks.add(task(TASK_TYPE_OPTIMIZATION, title, optimization.getId(),
+                    optimization.getCreatedAt()));
+        }
+    }
+
+    /** 面试任务：标题即会话标题（会话无删除语义，全量参与） */
+    private void appendInterviewTasks(List<DashboardRecentTask> tasks, Long userId) {
+        List<InterviewSession> sessions = interviewSessionMapper.selectList(
+                Wrappers.<InterviewSession>lambdaQuery()
+                        .select(InterviewSession::getId, InterviewSession::getTitle,
+                                InterviewSession::getCreatedAt)
+                        .eq(InterviewSession::getUserId, userId)
+                        .orderByDesc(InterviewSession::getCreatedAt)
+                        .orderByDesc(InterviewSession::getId)
+                        .last("LIMIT " + RECENT_TASK_PER_KIND));
+        for (InterviewSession session : sessions) {
+            tasks.add(task(TASK_TYPE_INTERVIEW, session.getTitle(), session.getId(),
+                    session.getCreatedAt()));
+        }
+    }
+
+    /** 按 id 批量取简历名（**不过滤 status**：源资源逻辑删除后名称仍要显示） */
+    private Map<Long, String> resumeNamesByIds(Collection<Long> ids) {
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return resumeMapper.selectList(Wrappers.<Resume>lambdaQuery()
+                        .select(Resume::getId, Resume::getName)
+                        .in(Resume::getId, ids))
+                .stream().collect(Collectors.toMap(Resume::getId, Resume::getName));
+    }
+
+    /** 按 id 批量取岗位名（**不过滤 status**，同上） */
+    private Map<Long, String> jobNamesByIds(Collection<Long> ids) {
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return jobMapper.selectList(Wrappers.<Job>lambdaQuery()
+                        .select(Job::getId, Job::getJobName)
+                        .in(Job::getId, ids))
+                .stream().collect(Collectors.toMap(Job::getId, Job::getJobName));
+    }
+
+    /** 最近任务项工厂 */
+    private static DashboardRecentTask task(String type, String title, Long refId,
+                                            LocalDateTime happenedAt) {
+        DashboardRecentTask item = new DashboardRecentTask();
+        item.setType(type);
+        item.setTitle(title);
+        item.setRefId(refId);
+        item.setHappenedAt(happenedAt);
+        return item;
     }
 
     // ---------------------------------------------------------------- 关联查询（当页批量，无 N+1）

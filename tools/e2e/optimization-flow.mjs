@@ -402,7 +402,39 @@ try {
   check('⑦ 再次保存后旧稿进入编辑历史（1 版）',
     withHistory.editHistory?.length === 1 && withHistory.editHistory[0].content === DRAFT)
   const historyText = await cardText('历史版本')
-  check('⑦ 历史版本卡片渲染出条目与回填入口', historyText.includes('回填'), historyText.slice(0, 100))
+  check('⑦ 历史版本卡片渲染出条目、「对比」与「回填」入口',
+    historyText.includes('回填') && historyText.includes('对比'), historyText.slice(0, 100))
+
+  // M13：版本对比（行内差异标注，纯前端 LCS）——历史版本 = DRAFT，当前稿 = DRAFT + "第二版"
+  await page.evaluate(`(() => {
+    const btn = [...document.querySelectorAll('.history__actions .el-button')]
+      .find((el) => el.textContent.trim() === '对比')
+    if (!btn) throw new Error('找不到「对比」按钮')
+    btn.click()
+  })()`)
+  await page.waitFor(`!!document.querySelector('.compare__body')`,
+    { label: '版本对比对话框', timeout: 15000 })
+  const compareCounts = JSON.parse(await page.evaluate(`JSON.stringify({
+    del: document.querySelectorAll('.compare__line--del').length,
+    add: document.querySelectorAll('.compare__line--add').length,
+    same: document.querySelectorAll('.compare__line--same').length,
+  })`))
+  check('⑦ 版本对比：新增 1 行、删除 0 行、其余为相同行（对当前稿多出「第二版」）',
+    compareCounts.add === 1 && compareCounts.del === 0 && compareCounts.same >= 1,
+    JSON.stringify(compareCounts))
+
+  // 对比对话框内回填：复用回填语义（只进编辑器、需显式保存）
+  await page.evaluate(`(() => {
+    const btn = [...document.querySelectorAll('.el-dialog__footer .el-button')]
+      .find((el) => el.textContent.includes('回填此版本'))
+    if (!btn) throw new Error('找不到「回填此版本到编辑器」按钮')
+    btn.click()
+  })()`)
+  await sleep(400)
+  const editorAfterCompareFill = await page.evaluate(
+    `document.querySelector('.editor__textarea textarea')?.value ?? ''`)
+  check('⑦ 对比内「回填此版本到编辑器」写入编辑器（未自动保存）',
+    editorAfterCompareFill === DRAFT, editorAfterCompareFill.slice(0, 60))
 
   // 导出：触发浏览器下载（headless 下断言"无错误提示"）
   await page.evaluate(`(() => {

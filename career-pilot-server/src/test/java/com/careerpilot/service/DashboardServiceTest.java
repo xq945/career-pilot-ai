@@ -22,19 +22,23 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.careerpilot.common.Hashing;
 import com.careerpilot.dto.DashboardGapItem;
 import com.careerpilot.dto.DashboardRecentMatch;
+import com.careerpilot.dto.DashboardRecentTask;
 import com.careerpilot.dto.DashboardSummary;
 import com.careerpilot.dto.ai.MatchItem;
+import com.careerpilot.entity.InterviewSession;
 import com.careerpilot.entity.Job;
 import com.careerpilot.entity.JobAnalysis;
 import com.careerpilot.entity.MatchRecord;
 import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
+import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.InterviewSessionMapper;
 import com.careerpilot.mapper.JobAnalysisMapper;
 import com.careerpilot.mapper.JobMapper;
 import com.careerpilot.mapper.MatchRecordMapper;
 import com.careerpilot.mapper.ResumeAnalysisMapper;
 import com.careerpilot.mapper.ResumeMapper;
+import com.careerpilot.mapper.ResumeOptimizationMapper;
 
 /**
  * 仪表盘汇总的护栏（《API接口设计》9.1）。
@@ -69,6 +73,9 @@ class DashboardServiceTest {
     @Mock
     private InterviewSessionMapper interviewSessionMapper;
 
+    @Mock
+    private ResumeOptimizationMapper resumeOptimizationMapper;
+
     @InjectMocks
     private DashboardService dashboardService;
 
@@ -93,7 +100,8 @@ class DashboardServiceTest {
         assertEquals(0, summary.getInterviewCount());
         assertEquals(0, summary.getInterviewOngoingCount());
         assertEquals(0, summary.getInterviewCompletedCount());
-        // 无记录时两个数组为空（不是 null）
+        // 无记录时三个数组为空（不是 null）
+        assertTrue(summary.getRecentTasks().isEmpty());
         assertTrue(summary.getRecentMatches().isEmpty());
         assertTrue(summary.getTopGaps().isEmpty());
         // 空集合先短路：不对分析表发 IN 查询
@@ -263,6 +271,74 @@ class DashboardServiceTest {
         assertEquals(1, summary.getInterviewCompletedCount());
     }
 
+    // ---------------------------------------------------------------- 最近任务（M13）
+
+    @Test
+    void summary_recentTasks_mergesFourKindsInTimeOrderAndCapsAtSix() {
+        when(resumeMapper.selectList(any())).thenReturn(List.of(
+                resume(11L, "简历A"), resume(12L, "简历B")));
+        when(resumeAnalysisMapper.selectList(any())).thenReturn(List.of(
+                resumeAnalysisAt(11L, "2026-10-14T10:00:05"),
+                resumeAnalysisAt(12L, "2026-10-14T10:00:04")));
+        when(jobMapper.selectList(any())).thenReturn(List.of(job(21L, "岗位A", "描述A")));
+        when(jobAnalysisMapper.selectList(any())).thenReturn(List.of(
+                jobAnalysisAt(21L, "2026-10-14T10:00:03")));
+        when(resumeOptimizationMapper.selectList(any())).thenReturn(List.of(
+                optimization(301L, 11L, 21L, "2026-10-14T10:00:02"),
+                optimization(302L, 12L, 21L, "2026-10-14T10:00:01")));
+        when(interviewSessionMapper.selectList(any())).thenReturn(List.of(
+                interviewSession(801L, "面试一", "2026-10-14T10:00:07"),
+                interviewSession(802L, "面试二", "2026-10-14T10:00:06")));
+        stubEmptyMatchPage();
+
+        List<DashboardRecentTask> tasks = dashboardService.summary(USER_ID).getRecentTasks();
+
+        // 候选 7 条（2 简历分析 + 1 岗位分析 + 2 优化 + 2 面试），按时间倒序截断到 6
+        assertEquals(6, tasks.size());
+        assertEquals(List.of("INTERVIEW", "INTERVIEW", "RESUME_ANALYSIS", "RESUME_ANALYSIS",
+                        "JOB_ANALYSIS", "OPTIMIZATION"),
+                tasks.stream().map(DashboardRecentTask::getType).toList());
+        assertEquals("面试一", tasks.get(0).getTitle());
+        assertEquals(801L, tasks.get(0).getRefId());
+        // 优化任务标题为「简历名 · 岗位名」，refId 为优化记录 id（301 在前、302 被截）
+        assertEquals("简历A · 岗位A", tasks.get(5).getTitle());
+        assertEquals(301L, tasks.get(5).getRefId());
+    }
+
+    @Test
+    void summary_recentTasks_noActiveResume_shortCircuitsAnalysisQueries() {
+        // 无有效简历（含全部已删的情形——wrapper 的 status 过滤由真库执行，见接口层脚本）：
+        // 分析查询整体短路，任务线为空
+        when(resumeMapper.selectList(any())).thenReturn(List.of());
+        stubEmptyMatchPage();
+
+        DashboardSummary summary = dashboardService.summary(USER_ID);
+
+        assertTrue(summary.getRecentTasks().isEmpty());
+        // 有效简历为空 → 不对分析表发 IN 查询（空集合先短路）
+        verify(resumeAnalysisMapper, never()).selectList(any());
+    }
+
+    @Test
+    void summary_recentTasks_optimizationTitlesKeepDeletedSourceNames() {
+        // 优化记录本身无删除语义：源资源已删仍进任务线，名称不过滤 status 仍要显示
+        Resume deletedResume = resume(11L, "已删简历");
+        deletedResume.setStatus(Resume.STATUS_DELETED);
+        Job deletedJob = job(21L, "已删岗位", "描述");
+        deletedJob.setStatus(Job.STATUS_DELETED);
+        when(resumeMapper.selectList(any())).thenReturn(List.of(deletedResume));
+        when(jobMapper.selectList(any())).thenReturn(List.of(deletedJob));
+        when(resumeOptimizationMapper.selectList(any())).thenReturn(List.of(
+                optimization(301L, 11L, 21L, "2026-10-14T10:00:02")));
+        stubEmptyMatchPage();
+
+        List<DashboardRecentTask> tasks = dashboardService.summary(USER_ID).getRecentTasks();
+
+        assertEquals(1, tasks.size());
+        assertEquals("OPTIMIZATION", tasks.get(0).getType());
+        assertEquals("已删简历 · 已删岗位", tasks.get(0).getTitle());
+    }
+
     // ---------------------------------------------------------------- 辅助
 
     /** 最近匹配分页默认返回空页（Mockito 对 Page 默认返回 null，必须显式 stub） */
@@ -285,6 +361,8 @@ class DashboardServiceTest {
         ResumeAnalysis analysis = new ResumeAnalysis();
         analysis.setResumeId(resumeId);
         analysis.setStatus(ResumeAnalysis.STATUS_SUCCESS);
+        // M13：任务线排序用（DB 中 created_at NOT NULL，mock 数据同样自洽）
+        analysis.setCreatedAt(LocalDateTime.of(2026, 10, 12, 9, 0));
         return analysis;
     }
 
@@ -305,6 +383,8 @@ class DashboardServiceTest {
         analysis.setVersionNo(versionNo);
         analysis.setSourceHash(sourceHash);
         analysis.setStatus(JobAnalysis.STATUS_SUCCESS);
+        // M13：任务线排序用（DB 中 created_at NOT NULL，mock 数据同样自洽）
+        analysis.setCreatedAt(LocalDateTime.of(2026, 10, 12, 9, 0));
         return analysis;
     }
 
@@ -324,6 +404,37 @@ class DashboardServiceTest {
         item.setText(text);
         item.setDimension(dimension);
         return item;
+    }
+
+    private ResumeAnalysis resumeAnalysisAt(Long resumeId, String createdAt) {
+        ResumeAnalysis analysis = resumeAnalysis(resumeId);
+        analysis.setCreatedAt(LocalDateTime.parse(createdAt));
+        return analysis;
+    }
+
+    private JobAnalysis jobAnalysisAt(Long jobId, String createdAt) {
+        JobAnalysis analysis = jobAnalysis(jobId, 1, Hashing.sha256Hex("描述A"));
+        analysis.setCreatedAt(LocalDateTime.parse(createdAt));
+        return analysis;
+    }
+
+    private ResumeOptimization optimization(Long id, Long resumeId, Long jobId, String createdAt) {
+        ResumeOptimization optimization = new ResumeOptimization();
+        optimization.setId(id);
+        optimization.setUserId(USER_ID);
+        optimization.setResumeId(resumeId);
+        optimization.setJobId(jobId);
+        optimization.setCreatedAt(LocalDateTime.parse(createdAt));
+        return optimization;
+    }
+
+    private InterviewSession interviewSession(Long id, String title, String createdAt) {
+        InterviewSession session = new InterviewSession();
+        session.setId(id);
+        session.setUserId(USER_ID);
+        session.setTitle(title);
+        session.setCreatedAt(LocalDateTime.parse(createdAt));
+        return session;
     }
 
 }

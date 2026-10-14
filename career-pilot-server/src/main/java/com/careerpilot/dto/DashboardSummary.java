@@ -49,7 +49,10 @@ public class DashboardSummary {
     /** 已完成（status = 1） */
     private Integer interviewCompletedCount;
 
-    /** 最近 5 条匹配记录（created_at 倒序）；无记录时为空数组 */
+    /** 最近任务时间线（M13：四类各取最近 3 条、合并倒序取 6）；无任务时为空数组 */
+    private List<DashboardRecentTask> recentTasks;
+
+    /** 最近 5 条匹配记录（created_at 倒序）；无记录时为空数组。M13 起页面不再展示，字段保留兼容 */
     private List<DashboardRecentMatch> recentMatches;
 
     /** 最近一次匹配的差距项（missing 在前、partial 在后，最多 3 条）；无记录时为空数组 */
@@ -133,6 +136,14 @@ public class DashboardSummary {
 
     public void setInterviewCompletedCount(Integer interviewCompletedCount) {
         this.interviewCompletedCount = interviewCompletedCount;
+    }
+
+    public List<DashboardRecentTask> getRecentTasks() {
+        return recentTasks;
+    }
+
+    public void setRecentTasks(List<DashboardRecentTask> recentTasks) {
+        this.recentTasks = recentTasks;
     }
 
     public List<DashboardRecentMatch> getRecentMatches() {

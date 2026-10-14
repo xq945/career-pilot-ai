@@ -17,6 +17,7 @@ import ChangeCompare from '@/components/ChangeCompare.vue'
 import DimensionBars from '@/components/DimensionBars.vue'
 import ScoreRing from '@/components/ScoreRing.vue'
 import StateBlock from '@/components/StateBlock.vue'
+import { diffLines } from '@/utils/textDiff'
 
 /**
  * 优化工作台（《前端原型设计》§5.8，接口《API接口设计》§6A.3–6A.6）。
@@ -236,6 +237,32 @@ function safeFileName(name) {
 function fillHistory(snapshot) {
   draft.value = snapshot.content
   ElMessage.info('已回填到编辑器，确认后点「保存编辑」才会生效')
+}
+
+/* ---------------------------------------------------------------- 版本对比（M13） */
+
+const compareVisible = ref(false)
+const compareSnapshot = ref(null)
+
+/** 行内差异：所选历史版本 → 当前稿（纯前端 LCS，不调后端；editHistory 已含全文） */
+const compareDiff = computed(() => {
+  if (!compareSnapshot.value) {
+    return []
+  }
+  return diffLines(compareSnapshot.value.content ?? '', currentContent.value)
+})
+
+function openCompare(snapshot) {
+  compareSnapshot.value = snapshot
+  compareVisible.value = true
+}
+
+/** 对比对话框内回填：复用 fillHistory 的语义（进编辑器、需显式保存），随后关闭对话框 */
+function fillHistoryFromCompare() {
+  if (compareSnapshot.value) {
+    fillHistory(compareSnapshot.value)
+  }
+  compareVisible.value = false
 }
 </script>
 
@@ -591,9 +618,14 @@ function fillHistory(snapshot) {
               <div v-for="(snapshot, index) in [...editHistory].reverse()" :key="index" class="history">
                 <div class="history__head">
                   <span class="history__time">{{ formatTime(snapshot.savedAt) }}</span>
-                  <el-button link type="primary" size="small" @click="fillHistory(snapshot)">
-                    回填
-                  </el-button>
+                  <span class="history__actions">
+                    <el-button link type="primary" size="small" @click="openCompare(snapshot)">
+                      对比
+                    </el-button>
+                    <el-button link type="primary" size="small" @click="fillHistory(snapshot)">
+                      回填
+                    </el-button>
+                  </span>
                 </div>
                 <p class="history__preview">{{ (snapshot.content || '').slice(0, 80) }}…</p>
               </div>
@@ -651,6 +683,37 @@ function fillHistory(snapshot) {
         </div>
       </div>
     </StateBlock>
+
+    <!-- M13：版本对比（行内差异标注，纯前端 LCS，不调后端） -->
+    <el-dialog v-model="compareVisible" title="版本对比" width="720px">
+      <div class="compare__legend">
+        <span>历史版本 · {{ compareSnapshot ? formatTime(compareSnapshot.savedAt) : '' }}</span>
+        <span class="compare__legend-arrow">→ 当前稿</span>
+        <span class="compare__chips">
+          <span class="compare__chip compare__chip--del">- 删除</span>
+          <span class="compare__chip compare__chip--add">+ 新增</span>
+        </span>
+      </div>
+      <div class="compare__body">
+        <p
+          v-for="(line, index) in compareDiff"
+          :key="index"
+          class="compare__line"
+          :class="`compare__line--${line.type}`"
+        >
+          <span class="compare__sign">{{ line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' ' }}</span>
+          <span class="compare__text">{{ line.text || ' ' }}</span>
+        </p>
+      </div>
+      <template #footer>
+        <el-button @click="compareVisible = false">
+          关闭
+        </el-button>
+        <el-button type="primary" @click="fillHistoryFromCompare">
+          回填此版本到编辑器
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -1097,5 +1160,86 @@ function fillHistory(snapshot) {
 .next__button {
   margin-left: 0;
   width: 100%;
+}
+
+/* ---- M13 版本对比 ---- */
+.history__actions {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.compare__legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-500);
+  margin-bottom: 10px;
+}
+
+.compare__legend-arrow {
+  color: var(--ink-400);
+}
+
+.compare__chips {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.compare__chip {
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.compare__chip--del {
+  color: var(--danger);
+  background: #fdecec;
+}
+
+.compare__chip--add {
+  color: #3f8f4f;
+  background: #eef7ee;
+}
+
+.compare__body {
+  max-height: 52vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 0;
+  background: var(--bg);
+}
+
+.compare__line {
+  display: flex;
+  gap: 8px;
+  padding: 1px 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.compare__line--del {
+  background: #fdecec;
+  color: #c45656;
+}
+
+.compare__line--add {
+  background: #eef7ee;
+  color: #3f8f4f;
+}
+
+.compare__sign {
+  flex: 0 0 12px;
+  color: var(--ink-400);
+  user-select: none;
+}
+
+.compare__text {
+  flex: 1;
+  min-width: 0;
 }
 </style>
