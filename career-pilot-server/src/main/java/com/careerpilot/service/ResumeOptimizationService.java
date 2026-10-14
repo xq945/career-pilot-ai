@@ -340,8 +340,9 @@ public class ResumeOptimizationService {
 
     /**
      * 归属校验：查不到（不存在或属于他人）一律 404，不区分二者以避免暴露资源存在性。
+     * （M12 起对面试模块开放：创建面试会话时校验优化来源的归属。）
      */
-    private ResumeOptimization getOwned(Long userId, Long id) {
+    public ResumeOptimization getOwned(Long userId, Long id) {
         ResumeOptimization record = optimizationMapper.selectOne(Wrappers.<ResumeOptimization>lambdaQuery()
                 .eq(ResumeOptimization::getId, id)
                 .eq(ResumeOptimization::getUserId, userId));
@@ -351,8 +352,11 @@ public class ResumeOptimizationService {
         return record;
     }
 
-    /** 当前生效内容：用户编辑稿优先，无编辑稿时回落模型原稿（展示、评估、导出同口径） */
-    private static String currentContent(ResumeOptimization record) {
+    /**
+     * 当前生效内容：用户编辑稿优先，无编辑稿时回落模型原稿（展示、评估、导出同口径）。
+     * （M12 起对面试模块开放：出题的候选人简历块取同一口径。）
+     */
+    public static String currentContent(ResumeOptimization record) {
         String edited = record.getEditedContent();
         return edited == null || edited.isBlank() ? record.getOptimizedContent() : edited;
     }

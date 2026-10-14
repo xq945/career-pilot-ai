@@ -640,7 +640,10 @@ function fillHistory(snapshot) {
               <el-button :icon="MagicStick" class="next__button" @click="router.push('/optimizations')">
                 再优化一版
               </el-button>
-              <el-button class="next__button" @click="router.push('/interviews')">
+              <el-button
+                class="next__button"
+                @click="router.push({ name: 'interviews', query: { optimizationId } })"
+              >
                 用这份简历模拟面试
               </el-button>
             </div>

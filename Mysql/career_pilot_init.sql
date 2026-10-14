@@ -150,6 +150,8 @@ CREATE TABLE interview_session (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
   job_id BIGINT NOT NULL,
+  resume_id BIGINT DEFAULT NULL COMMENT '关联简历（M12：面试出题参考的候选人简历，可空）',
+  optimization_id BIGINT DEFAULT NULL COMMENT '关联优化记录（M12：从优化工作台发起时写入，可空）',
   title VARCHAR(100) NOT NULL,
   question_type VARCHAR(30) NOT NULL DEFAULT 'MIXED' COMMENT 'JAVA/SPRING/MYSQL/REDIS/PROJECT/MIXED',
   question_count INT NOT NULL DEFAULT 5 COMMENT '计划题目数，创建会话时确定',
@@ -164,8 +166,12 @@ CREATE TABLE interview_session (
   completed_at DATETIME DEFAULT NULL,
   KEY idx_interview_user_created (user_id, created_at),
   KEY idx_interview_job (job_id),
+  KEY idx_interview_resume (resume_id),
+  KEY idx_interview_optimization (optimization_id),
   CONSTRAINT fk_interview_user FOREIGN KEY (user_id) REFERENCES sys_user(id) ON DELETE RESTRICT,
-  CONSTRAINT fk_interview_job FOREIGN KEY (job_id) REFERENCES job(id) ON DELETE RESTRICT
+  CONSTRAINT fk_interview_job FOREIGN KEY (job_id) REFERENCES job(id) ON DELETE RESTRICT,
+  CONSTRAINT fk_interview_resume FOREIGN KEY (resume_id) REFERENCES resume(id) ON DELETE RESTRICT,
+  CONSTRAINT fk_interview_optimization FOREIGN KEY (optimization_id) REFERENCES resume_optimization(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='面试会话';
 
 -- V1.4 增量（既有库升级执行；新建库执行上面的完整 DDL 即可）：
@@ -174,6 +180,15 @@ CREATE TABLE interview_session (
 --   ADD COLUMN strengths JSON NULL COMMENT 'AI 归纳的强项标签（M7）',
 --   ADD COLUMN weaknesses JSON NULL COMMENT 'AI 归纳的薄弱标签（M7）',
 --   ADD COLUMN recommendations JSON NULL COMMENT 'AI 归纳的提升建议（M7）';
+
+-- V1.7 增量（M12，既有库升级执行；新建库执行上面的完整 DDL 即可）：
+-- ALTER TABLE interview_session
+--   ADD COLUMN resume_id BIGINT DEFAULT NULL COMMENT '关联简历（M12）',
+--   ADD COLUMN optimization_id BIGINT DEFAULT NULL COMMENT '关联优化记录（M12）',
+--   ADD KEY idx_interview_resume (resume_id),
+--   ADD KEY idx_interview_optimization (optimization_id),
+--   ADD CONSTRAINT fk_interview_resume FOREIGN KEY (resume_id) REFERENCES resume(id) ON DELETE RESTRICT,
+--   ADD CONSTRAINT fk_interview_optimization FOREIGN KEY (optimization_id) REFERENCES resume_optimization(id) ON DELETE RESTRICT;
 
 -- ============================================================
 -- 8. 面试题与回答

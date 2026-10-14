@@ -213,6 +213,10 @@ const averageScore = computed(() => {
           {{ session.jobName }}<template v-if="session.companyName"> · {{ session.companyName }}</template>
           · {{ TYPE_LABELS[session.questionType] ?? session.questionType }}
         </p>
+        <!-- M12：来源展示（源资源被逻辑删除后仍显示） -->
+        <p v-if="session?.resumeName" class="page-head__desc page-head__source">
+          来源：<template v-if="session.optimizationVersionNo">优化稿 v{{ session.optimizationVersionNo }} · </template>{{ session.resumeName }}
+        </p>
       </div>
       <el-button
         v-if="session"
@@ -413,6 +417,11 @@ const averageScore = computed(() => {
 .page-head__desc {
   font-size: 13px;
   color: var(--ink-500);
+}
+
+.page-head__source {
+  margin-top: 2px;
+  color: var(--ink-400);
 }
 
 .layout {

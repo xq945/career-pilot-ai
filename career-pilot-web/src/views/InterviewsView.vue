@@ -1,11 +1,13 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ChatLineSquare, Plus } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 
 import { QUESTION_TYPES, TYPE_LABELS, createInterview, listInterviews } from '@/api/interview'
 import { listJobs } from '@/api/job'
+import { getOptimization } from '@/api/optimization'
+import { listResumes } from '@/api/resume'
 import AiWaiting from '@/components/AiWaiting.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import StateBlock from '@/components/StateBlock.vue'
@@ -25,6 +27,7 @@ import StateBlock from '@/components/StateBlock.vue'
  */
 const PAGE_SIZE = 10
 
+const route = useRoute()
 const router = useRouter()
 
 /* ---------------------------------------------------------------- 列表 */
@@ -83,7 +86,14 @@ function openReport(item) {
   router.push({ name: 'interview-report', params: { id: item.id } })
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  // M12：从优化工作台「用这份简历模拟面试」进入（/interviews?optimizationId=N）→ 自动打开弹窗
+  const optimizationId = Number(route.query.optimizationId)
+  if (optimizationId) {
+    openCreateFromOptimization(optimizationId)
+  }
+})
 
 /* ---------------------------------------------------------------- 创建面试 */
 
@@ -95,6 +105,16 @@ const formRef = ref()
 const submitting = ref(false)
 /** 提交失败信息 { code, message }；null 表示无 */
 const submitError = ref(null)
+
+/** M12：来源锁定态（非空 = 从优化进入，岗位与来源锁定）；{ optimizationId, jobName, resumeName, versionNo } */
+const source = ref(null)
+/** 来源加载失败提示（退回普通新建流程时展示） */
+const sourceError = ref('')
+
+/** M12：可选关联的简历（普通新建态）；来源态下由优化记录锁定 */
+const resumes = ref([])
+const resumesError = ref('')
+const resumeId = ref(null)
 
 const form = reactive({
   jobId: null,
@@ -129,15 +149,60 @@ async function loadJobs() {
   }
 }
 
-function openCreate() {
+async function loadResumes() {
+  resumesError.value = ''
+  try {
+    const data = await listResumes({ page: 1, size: 100 })
+    resumes.value = data.records
+  }
+  catch (error) {
+    resumesError.value = error.message || '简历列表加载失败'
+  }
+}
+
+/** 重置弹窗表单与来源态（打开弹窗前调用） */
+function resetForm() {
   form.jobId = null
   form.title = ''
   form.questionType = 'MIXED'
   form.questionCount = 5
   titleTouched.value = false
   submitError.value = null
+  source.value = null
+  sourceError.value = ''
+  resumeId.value = null
+}
+
+function openCreate() {
+  resetForm()
   dialogVisible.value = true
   loadJobs()
+  loadResumes()
+}
+
+/**
+ * M12：从优化来源打开新建弹窗——加载优化详情，锁定岗位与来源
+ * （出题将参考优化稿内容与匹配差距）；加载失败时退回普通新建流程并提示。
+ */
+async function openCreateFromOptimization(optimizationId) {
+  try {
+    const detail = await getOptimization(optimizationId)
+    resetForm()
+    source.value = {
+      optimizationId: detail.id,
+      jobName: detail.jobName,
+      resumeName: detail.resumeName,
+      versionNo: detail.versionNo,
+    }
+    form.jobId = detail.jobId
+    form.title = `${detail.jobName}模拟面试`
+    dialogVisible.value = true
+    loadJobs()
+  }
+  catch (error) {
+    openCreate()
+    sourceError.value = error.message || '来源加载失败，已退回普通新建流程'
+  }
 }
 
 /** 选择岗位后，未手改过的名称联动为「{岗位名}模拟面试」（原型 §5.9 默认值） */
@@ -164,6 +229,9 @@ async function submit() {
       title: form.title.trim(),
       questionType: form.questionType,
       questionCount: form.questionCount,
+      // M12：来源仅在对应态下有值（无来源时请求体与历史一致）
+      resumeId: source.value ? undefined : (resumeId.value ?? undefined),
+      optimizationId: source.value?.optimizationId,
     })
     dialogVisible.value = false
     // 题目已生成：直接进入答题页
@@ -265,6 +333,9 @@ const submitErrorText = computed(() => {
                 · {{ TYPE_LABELS[item.questionType] ?? item.questionType }}
                 · {{ item.generatedCount }} 题
                 · {{ formatTime(item.createdAt) }}
+                <template v-if="item.resumeName">
+                  · 来源：<template v-if="item.optimizationVersionNo">优化稿 v{{ item.optimizationVersionNo }} · </template>{{ item.resumeName }}
+                </template>
               </div>
             </div>
             <div class="item__actions">
@@ -308,10 +379,32 @@ const submitErrorText = computed(() => {
       <template v-else>
         <p class="dialog__desc">
           面试题会围绕所选岗位的职责与要求生成；岗位无需事先完成 AI 分析。
+          可选关联一份简历或来源优化，让出题结合你的真实经历与能力差距。
         </p>
 
+        <el-alert
+          v-if="sourceError"
+          class="tip"
+          type="warning"
+          :closable="false"
+          show-icon
+        >
+          {{ sourceError }}
+        </el-alert>
+
         <el-form ref="formRef" :model="form" :rules="formRules" label-position="top" @submit.prevent>
-          <el-form-item label="选择岗位" prop="jobId">
+          <!-- M12：来源锁定态——岗位与来源由优化记录决定，不可改选 -->
+          <el-form-item v-if="source" label="面试来源">
+            <div class="source">
+              <el-tag type="success" size="small" effect="light">优化稿 v{{ source.versionNo }}</el-tag>
+              <span class="source__text">{{ source.resumeName }} · {{ source.jobName }}</span>
+            </div>
+            <p class="dialog__hint">
+              出题将参考该优化稿的内容与匹配分析中的能力差距。
+            </p>
+          </el-form-item>
+
+          <el-form-item v-else label="选择岗位" prop="jobId">
             <el-select
               v-model="form.jobId"
               placeholder="请选择岗位"
@@ -329,6 +422,27 @@ const submitErrorText = computed(() => {
             <p v-if="jobsError" class="dialog__hint dialog__hint--error">{{ jobsError }}</p>
             <p v-else-if="!jobsLoading && jobs.length === 0" class="dialog__hint">
               还没有岗位，请先到<a @click="router.push('/jobs')">岗位管理</a>录入目标岗位。
+            </p>
+          </el-form-item>
+
+          <!-- M12：关联简历（可选；不要求事先分析，出题时自动带上内容与最近匹配差距） -->
+          <el-form-item v-if="!source" label="关联简历（可选）">
+            <el-select
+              v-model="resumeId"
+              placeholder="不关联简历"
+              style="width: 100%"
+              clearable
+            >
+              <el-option
+                v-for="resume in resumes"
+                :key="resume.id"
+                :label="resume.name"
+                :value="resume.id"
+              />
+            </el-select>
+            <p v-if="resumesError" class="dialog__hint dialog__hint--error">{{ resumesError }}</p>
+            <p v-else class="dialog__hint">
+              关联后出题会参考简历内容与最近一次匹配分析；不关联也可以。
             </p>
           </el-form-item>
 
@@ -520,6 +634,18 @@ const submitErrorText = computed(() => {
 .dialog__hint a {
   color: var(--brand-600);
   cursor: pointer;
+}
+
+/* ---- M12 来源锁定态 ---- */
+.source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.source__text {
+  font-size: 13px;
+  color: var(--ink-900);
 }
 
 .tip {

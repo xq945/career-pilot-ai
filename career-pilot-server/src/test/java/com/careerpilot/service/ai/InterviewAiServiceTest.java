@@ -1,6 +1,7 @@
 package com.careerpilot.service.ai;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -16,6 +17,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.core.io.ClassPathResource;
 
 import com.careerpilot.ai.AiCallResult;
@@ -25,6 +27,7 @@ import com.careerpilot.dto.ai.GeneratedQuestion;
 import com.careerpilot.dto.ai.InterviewEvaluationAiOutput;
 import com.careerpilot.dto.ai.InterviewQuestionsAiOutput;
 import com.careerpilot.dto.ai.InterviewSummaryAiOutput;
+import com.careerpilot.dto.ai.MatchItem;
 import com.careerpilot.entity.InterviewQuestion;
 import com.careerpilot.entity.Job;
 
@@ -129,6 +132,36 @@ class InterviewAiServiceTest {
                 "元素内约定外字段必须已被取出清空（参考答案在评价时才产生）");
     }
 
+    // ---------------------------------------------------------------- 出题上下文块（M12）
+
+    @Test
+    void generate_withContext_appendsResumeAndGapBlocks() {
+        String prompt = capturedPrompt("张三的简历：熟悉 Java 与 Spring Boot",
+                List.of(gap("简历未体现 Redis 使用经验")));
+
+        assertTrue(prompt.contains("<候选人简历>"), "携带简历时必须出现候选人简历块");
+        assertTrue(prompt.contains("熟悉 Java 与 Spring Boot"));
+        assertTrue(prompt.contains("简历未体现 Redis 使用经验"), "差距项必须进入提示词");
+    }
+
+    @Test
+    void generate_withoutContext_noContextBlocks() {
+        String prompt = capturedPrompt(null, null);
+
+        assertFalse(prompt.contains("候选人简历"), "未携带上下文时不得出现空块（与历史逐字节一致）");
+        assertFalse(prompt.contains("能力差距"));
+    }
+
+    @Test
+    void generate_truncatesResumeTextToLimit() {
+        String longResume = "简历".repeat(3000);   // 6000 字符，超出 4000 上限
+
+        String prompt = capturedPrompt(longResume, null);
+
+        assertFalse(prompt.contains(longResume), "超长简历不得整段进入提示词");
+        assertTrue(prompt.contains("…"), "简历节选超长时截断");
+    }
+
     // ---------------------------------------------------------------- 评价
 
     @Test
@@ -190,7 +223,24 @@ class InterviewAiServiceTest {
     private InterviewQuestionsAiOutput runQuestions(InterviewQuestionsAiOutput output, int count) {
         when(template.call(eq("interview-question"), anyString(), anyString(), eq(InterviewQuestionsAiOutput.class)))
                 .thenReturn(new AiCallResult<>(output, "test-model", 100L, 1, 1, 2));
-        return service.generate(job(), null, "MIXED", count).value();
+        return service.generate(job(), null, "MIXED", count, null, null).value();
+    }
+
+    /** 捕获出题场景的用户消息（M12 上下文块断言用） */
+    private String capturedPrompt(String resumeText, List<MatchItem> gapItems) {
+        ArgumentCaptor<String> userPrompt = ArgumentCaptor.forClass(String.class);
+        when(template.call(eq("interview-question"), anyString(), userPrompt.capture(),
+                eq(InterviewQuestionsAiOutput.class)))
+                .thenReturn(new AiCallResult<>(questions(question("题目", "JAVA")),
+                        "test-model", 100L, 1, 1, 2));
+        service.generate(job(), null, "MIXED", 3, resumeText, gapItems);
+        return userPrompt.getValue();
+    }
+
+    private static MatchItem gap(String text) {
+        MatchItem item = new MatchItem();
+        item.setText(text);
+        return item;
     }
 
     private InterviewEvaluationAiOutput runEvaluation(InterviewEvaluationAiOutput output) {

@@ -33,14 +33,21 @@ import com.careerpilot.dto.ReportQuestion;
 import com.careerpilot.dto.ai.InterviewEvaluationAiOutput;
 import com.careerpilot.dto.ai.InterviewQuestionsAiOutput;
 import com.careerpilot.dto.ai.InterviewSummaryAiOutput;
+import com.careerpilot.dto.ai.MatchItem;
 import com.careerpilot.entity.InterviewQuestion;
 import com.careerpilot.entity.InterviewSession;
 import com.careerpilot.entity.Job;
 import com.careerpilot.entity.JobAnalysis;
+import com.careerpilot.entity.MatchRecord;
+import com.careerpilot.entity.Resume;
+import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.InterviewQuestionMapper;
 import com.careerpilot.mapper.InterviewSessionMapper;
 import com.careerpilot.mapper.JobAnalysisMapper;
 import com.careerpilot.mapper.JobMapper;
+import com.careerpilot.mapper.MatchRecordMapper;
+import com.careerpilot.mapper.ResumeMapper;
+import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.ai.InterviewAiService;
 
 /**
@@ -61,6 +68,9 @@ public class InterviewService {
 
     private static final Logger log = LoggerFactory.getLogger(InterviewService.class);
 
+    /** 能力差距块：missing / partial 各取的条数上限（M12，收口方案 §4.3） */
+    private static final int GAP_ITEMS_PER_KIND = 5;
+
     private final InterviewSessionMapper interviewSessionMapper;
 
     private final InterviewQuestionMapper interviewQuestionMapper;
@@ -75,13 +85,29 @@ public class InterviewService {
 
     private final InterviewTxService interviewTxService;
 
+    // M12（《一体化工作流收口方案》§4.3）：来源与出题上下文装配
+    private final ResumeService resumeService;
+
+    private final ResumeOptimizationService resumeOptimizationService;
+
+    private final MatchRecordMapper matchRecordMapper;
+
+    private final ResumeMapper resumeMapper;
+
+    private final ResumeOptimizationMapper resumeOptimizationMapper;
+
     public InterviewService(InterviewSessionMapper interviewSessionMapper,
                             InterviewQuestionMapper interviewQuestionMapper,
                             JobMapper jobMapper,
                             JobAnalysisMapper jobAnalysisMapper,
                             JobService jobService,
                             InterviewAiService interviewAiService,
-                            InterviewTxService interviewTxService) {
+                            InterviewTxService interviewTxService,
+                            ResumeService resumeService,
+                            ResumeOptimizationService resumeOptimizationService,
+                            MatchRecordMapper matchRecordMapper,
+                            ResumeMapper resumeMapper,
+                            ResumeOptimizationMapper resumeOptimizationMapper) {
         this.interviewSessionMapper = interviewSessionMapper;
         this.interviewQuestionMapper = interviewQuestionMapper;
         this.jobMapper = jobMapper;
@@ -89,6 +115,11 @@ public class InterviewService {
         this.jobService = jobService;
         this.interviewAiService = interviewAiService;
         this.interviewTxService = interviewTxService;
+        this.resumeService = resumeService;
+        this.resumeOptimizationService = resumeOptimizationService;
+        this.matchRecordMapper = matchRecordMapper;
+        this.resumeMapper = resumeMapper;
+        this.resumeOptimizationMapper = resumeOptimizationMapper;
     }
 
     // ---------------------------------------------------------------- 创建会话（§7.1）
@@ -105,13 +136,19 @@ public class InterviewService {
         // 岗位分析仅作参考增强：未分析或已过期时只用岗位描述（过期的分析会带偏出题方向）
         JobAnalysis analysis = latestUsableAnalysis(job);
 
+        // M12：来源与出题上下文（归属/一致性校验在内；无来源时退化为历史行为）
+        CreateContext context = resolveCreateContext(userId, request);
+
         // 模型调用（通常 10–40 秒）：事务之外
         AiCallResult<InterviewQuestionsAiOutput> result = interviewAiService.generate(
-                job, analysis, request.getQuestionType(), request.getQuestionCount());
+                job, analysis, request.getQuestionType(), request.getQuestionCount(),
+                context.resumeText(), context.gapItems());
 
         InterviewSession session = new InterviewSession();
         session.setUserId(userId);
         session.setJobId(job.getId());
+        session.setResumeId(context.resumeId());
+        session.setOptimizationId(context.optimizationId());
         session.setTitle(request.getTitle().trim());
         session.setQuestionType(request.getQuestionType());
         session.setQuestionCount(request.getQuestionCount());
@@ -137,6 +174,86 @@ public class InterviewService {
                 .orderByDesc(JobAnalysis::getVersionNo)
                 .last("LIMIT 1"));
         return JobAnalysisService.isStale(job.getDescription(), latest) ? null : latest;
+    }
+
+    // ---------------------------------------------------------------- 来源与出题上下文（M12）
+
+    /**
+     * 装配创建请求的来源与出题上下文（《一体化工作流收口方案》§4.3）。
+     *
+     * <p>三条规则（全部「有则带、无则退」——缺分析或匹配记录**不报错**，只减少上下文）：
+     * <ol>
+     *   <li>提供 {@code optimizationId}：校验归属（他人 → 404）与一致性（优化岗位必须与
+     *       {@code jobId} 一致；显式 {@code resumeId} 必须与优化的 resumeId 一致，否则 400）；
+     *       简历块取优化稿当前稿，差距块取该优化的 match_record；</li>
+     *   <li>仅提供 {@code resumeId}：校验归属（他人 → 404）；简历块取简历提取文本，
+     *       差距块取「简历 × 岗位」最近一条 match_record（无则不带）；</li>
+     *   <li>均不提供：无上下文，出题行为与历史完全一致。</li>
+     * </ol>
+     *
+     * <p>会话落库时 {@code resume_id} 由服务端从优化推导（《数据库设计》§5.12），
+     * 不接受前端组合出不一致的三元组。
+     */
+    private CreateContext resolveCreateContext(Long userId, InterviewCreateRequest request) {
+        if (request.getOptimizationId() != null) {
+            ResumeOptimization optimization =
+                    resumeOptimizationService.getOwned(userId, request.getOptimizationId());
+            if (!optimization.getJobId().equals(request.getJobId())) {
+                throw BusinessException.badRequest("所选优化记录与目标岗位不一致");
+            }
+            if (request.getResumeId() != null
+                    && !request.getResumeId().equals(optimization.getResumeId())) {
+                throw BusinessException.badRequest("所选简历与优化记录不一致");
+            }
+            MatchRecord match = matchRecordMapper.selectById(optimization.getMatchRecordId());
+            return new CreateContext(optimization.getResumeId(), optimization.getId(),
+                    ResumeOptimizationService.currentContent(optimization), gapItems(match));
+        }
+
+        if (request.getResumeId() != null) {
+            Resume resume = resumeService.getOwnedResume(userId, request.getResumeId());
+            MatchRecord latest = latestMatch(userId, resume.getId(), request.getJobId());
+            return new CreateContext(resume.getId(), null, resume.getContent(), gapItems(latest));
+        }
+
+        return new CreateContext(null, null, null, null);
+    }
+
+    /** 「简历 × 岗位」的最近一条匹配记录（无则 null）；仅用于能力差距块，不影响出题成败 */
+    private MatchRecord latestMatch(Long userId, Long resumeId, Long jobId) {
+        return matchRecordMapper.selectOne(Wrappers.<MatchRecord>lambdaQuery()
+                .eq(MatchRecord::getUserId, userId)
+                .eq(MatchRecord::getResumeId, resumeId)
+                .eq(MatchRecord::getJobId, jobId)
+                .orderByDesc(MatchRecord::getCreatedAt)
+                .orderByDesc(MatchRecord::getId)
+                .last("LIMIT 1"));
+    }
+
+    /**
+     * 能力差距块：missing 在前、partial 在后，各取前 {@value #GAP_ITEMS_PER_KIND} 条；
+     * 无匹配记录或无差距项时返回 null（不装配空块——空块会引导模型想象）。
+     */
+    private static List<MatchItem> gapItems(MatchRecord match) {
+        if (match == null) {
+            return null;
+        }
+        List<MatchItem> items = new ArrayList<>();
+        appendGaps(items, match.getMissingItems());
+        appendGaps(items, match.getPartialItems());
+        return items.isEmpty() ? null : items;
+    }
+
+    private static void appendGaps(List<MatchItem> target, List<MatchItem> source) {
+        if (source == null) {
+            return;
+        }
+        source.stream().limit(GAP_ITEMS_PER_KIND).forEach(target::add);
+    }
+
+    /** 创建来源与出题上下文：三者可各自为 null（无上下文，与历史行为一致） */
+    private record CreateContext(Long resumeId, Long optimizationId, String resumeText,
+                                 List<MatchItem> gapItems) {
     }
 
     // ---------------------------------------------------------------- 提交回答（§7.2）
@@ -210,10 +327,16 @@ public class InterviewService {
         List<InterviewSession> sessions = result.getRecords();
         Map<Long, Job> jobById = findJobsByIds(sessions);
         Map<Long, QuestionCounts> countsBySessionId = countQuestionsBySessionIds(sessions);
+        // M12：来源资源批量查询（两次查询、内存装配，无 N+1，沿用本类既有范式）
+        Map<Long, Resume> resumeById = findResumesByIds(sessions);
+        Map<Long, ResumeOptimization> optimizationById = findOptimizationsByIds(sessions);
 
         List<InterviewView> records = sessions.stream()
                 .map(session -> toView(session, jobById.get(session.getJobId()),
-                        countsBySessionId.get(session.getId())))
+                        countsBySessionId.get(session.getId()),
+                        session.getResumeId() == null ? null : resumeById.get(session.getResumeId()),
+                        session.getOptimizationId() == null
+                                ? null : optimizationById.get(session.getOptimizationId())))
                 .toList();
         return PageResult.of(result, records);
     }
@@ -225,6 +348,14 @@ public class InterviewService {
 
         InterviewDetail detail = new InterviewDetail();
         fillSessionFields(detail, session, findJob(session.getJobId()), questions);
+        // M12：来源展示（源资源逻辑删除后名称/版本号仍要显示）
+        Resume sourceResume = findSourceResume(session.getResumeId());
+        ResumeOptimization sourceOptimization = findSourceOptimization(session.getOptimizationId());
+        detail.setResumeId(session.getResumeId());
+        detail.setResumeName(sourceResume == null ? null : sourceResume.getName());
+        detail.setOptimizationId(session.getOptimizationId());
+        detail.setOptimizationVersionNo(
+                sourceOptimization == null ? null : sourceOptimization.getVersionNo());
         detail.setQuestions(questions.stream().map(InterviewService::toQuestionView).toList());
         return detail;
     }
@@ -246,6 +377,14 @@ public class InterviewService {
             report.setJobName(job.getJobName());
             report.setCompanyName(job.getCompanyName());
         }
+        // M12：来源展示（同 detail，源资源逻辑删除后仍显示）
+        Resume sourceResume = findSourceResume(session.getResumeId());
+        ResumeOptimization sourceOptimization = findSourceOptimization(session.getOptimizationId());
+        report.setResumeId(session.getResumeId());
+        report.setResumeName(sourceResume == null ? null : sourceResume.getName());
+        report.setOptimizationId(session.getOptimizationId());
+        report.setOptimizationVersionNo(
+                sourceOptimization == null ? null : sourceOptimization.getVersionNo());
         report.setQuestionType(session.getQuestionType());
         report.setStatus(session.getStatus());
         report.setQuestionCount(session.getQuestionCount());
@@ -329,6 +468,48 @@ public class InterviewService {
         return jobs.stream().collect(Collectors.toMap(Job::getId, Function.identity()));
     }
 
+    /** 批量查询当页会话的来源简历（**不带 status 过滤**：源资源逻辑删除后名称仍要显示） */
+    private Map<Long, Resume> findResumesByIds(List<InterviewSession> sessions) {
+        List<Long> ids = sessions.stream()
+                .map(InterviewSession::getResumeId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return resumeMapper.selectList(Wrappers.<Resume>lambdaQuery()
+                        .select(Resume::getId, Resume::getName)
+                        .in(Resume::getId, ids))
+                .stream().collect(Collectors.toMap(Resume::getId, Function.identity()));
+    }
+
+    /** 批量查询当页会话的来源优化记录（**不带 status 过滤**） */
+    private Map<Long, ResumeOptimization> findOptimizationsByIds(List<InterviewSession> sessions) {
+        List<Long> ids = sessions.stream()
+                .map(InterviewSession::getOptimizationId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return resumeOptimizationMapper.selectList(Wrappers.<ResumeOptimization>lambdaQuery()
+                        .select(ResumeOptimization::getId, ResumeOptimization::getVersionNo)
+                        .in(ResumeOptimization::getId, ids))
+                .stream().collect(Collectors.toMap(ResumeOptimization::getId, Function.identity()));
+    }
+
+    /** 来源简历单条查询（可空入参 → null），**不过滤 status**（同 {@link #findResumesByIds}） */
+    private Resume findSourceResume(Long resumeId) {
+        return resumeId == null ? null : resumeMapper.selectById(resumeId);
+    }
+
+    /** 来源优化记录单条查询（可空入参 → null） */
+    private ResumeOptimization findSourceOptimization(Long optimizationId) {
+        return optimizationId == null ? null : resumeOptimizationMapper.selectById(optimizationId);
+    }
+
     /**
      * 批量统计当页会话的题目数与已作答数（两次查询、内存聚合，无 N+1）。
      *
@@ -400,7 +581,8 @@ public class InterviewService {
         return response;
     }
 
-    private InterviewView toView(InterviewSession session, Job job, QuestionCounts counts) {
+    private InterviewView toView(InterviewSession session, Job job, QuestionCounts counts,
+                                 Resume resume, ResumeOptimization optimization) {
         InterviewView view = new InterviewView();
         view.setId(session.getId());
         view.setTitle(session.getTitle());
@@ -409,6 +591,11 @@ public class InterviewService {
             view.setJobName(job.getJobName());
             view.setCompanyName(job.getCompanyName());
         }
+        // M12：来源展示（源资源逻辑删除后名称/版本号仍要显示，§7.3）
+        view.setResumeId(session.getResumeId());
+        view.setResumeName(resume == null ? null : resume.getName());
+        view.setOptimizationId(session.getOptimizationId());
+        view.setOptimizationVersionNo(optimization == null ? null : optimization.getVersionNo());
         view.setQuestionType(session.getQuestionType());
         view.setQuestionCount(session.getQuestionCount());
         view.setGeneratedCount(counts == null ? 0 : counts.generatedCount());

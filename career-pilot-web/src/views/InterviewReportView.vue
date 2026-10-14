@@ -90,6 +90,10 @@ function goAnswer(index) {
           · {{ TYPE_LABELS[report.questionType] ?? report.questionType }}
           · {{ report.completed ? `完成于 ${formatTime(report.completedAt)}` : `创建于 ${formatTime(report.completedAt ?? '')}` }}
         </p>
+        <!-- M12：来源展示（源资源被逻辑删除后仍显示） -->
+        <p v-if="report?.resumeName" class="page-head__desc page-head__source">
+          来源：<template v-if="report.optimizationVersionNo">优化稿 v{{ report.optimizationVersionNo }} · </template>{{ report.resumeName }}
+        </p>
       </div>
     </div>
 
@@ -285,6 +289,11 @@ function goAnswer(index) {
 .page-head__desc {
   font-size: 13px;
   color: var(--ink-500);
+}
+
+.page-head__source {
+  margin-top: 2px;
+  color: var(--ink-400);
 }
 
 .layout {

@@ -47,6 +47,12 @@ public class InterviewSession {
 
     private Long jobId;
 
+    /** 来源简历（M12：可选；从优化发起时由服务端从优化推导写入，不接受前端组合） */
+    private Long resumeId;
+
+    /** 来源优化记录（M12：可选；出题参考该优化的当前稿与匹配差距） */
+    private Long optimizationId;
+
     private String title;
 
     /** JAVA/SPRING/MYSQL/REDIS/PROJECT/MIXED（白名单，创建时校验） */
@@ -102,6 +108,22 @@ public class InterviewSession {
 
     public void setJobId(Long jobId) {
         this.jobId = jobId;
+    }
+
+    public Long getResumeId() {
+        return resumeId;
+    }
+
+    public void setResumeId(Long resumeId) {
+        this.resumeId = resumeId;
+    }
+
+    public Long getOptimizationId() {
+        return optimizationId;
+    }
+
+    public void setOptimizationId(Long optimizationId) {
+        this.optimizationId = optimizationId;
     }
 
     public String getTitle() {

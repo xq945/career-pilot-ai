@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -20,6 +21,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.careerpilot.ai.AiCallResult;
@@ -36,13 +38,20 @@ import com.careerpilot.dto.ai.GeneratedQuestion;
 import com.careerpilot.dto.ai.InterviewEvaluationAiOutput;
 import com.careerpilot.dto.ai.InterviewQuestionsAiOutput;
 import com.careerpilot.dto.ai.InterviewSummaryAiOutput;
+import com.careerpilot.dto.ai.MatchItem;
 import com.careerpilot.entity.InterviewQuestion;
 import com.careerpilot.entity.InterviewSession;
 import com.careerpilot.entity.Job;
+import com.careerpilot.entity.MatchRecord;
+import com.careerpilot.entity.Resume;
+import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.InterviewQuestionMapper;
 import com.careerpilot.mapper.InterviewSessionMapper;
 import com.careerpilot.mapper.JobAnalysisMapper;
 import com.careerpilot.mapper.JobMapper;
+import com.careerpilot.mapper.MatchRecordMapper;
+import com.careerpilot.mapper.ResumeMapper;
+import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.ai.InterviewAiService;
 
 /**
@@ -63,6 +72,16 @@ class InterviewServiceTest {
 
     private InterviewTxService txService;
 
+    private ResumeService resumeService;
+
+    private ResumeOptimizationService resumeOptimizationService;
+
+    private MatchRecordMapper matchRecordMapper;
+
+    private ResumeMapper resumeMapper;
+
+    private ResumeOptimizationMapper resumeOptimizationMapper;
+
     private InterviewService service;
 
     @BeforeEach
@@ -73,8 +92,15 @@ class InterviewServiceTest {
         jobService = mock(JobService.class);
         aiService = mock(InterviewAiService.class);
         txService = mock(InterviewTxService.class);
+        resumeService = mock(ResumeService.class);
+        resumeOptimizationService = mock(ResumeOptimizationService.class);
+        matchRecordMapper = mock(MatchRecordMapper.class);
+        resumeMapper = mock(ResumeMapper.class);
+        resumeOptimizationMapper = mock(ResumeOptimizationMapper.class);
         service = new InterviewService(sessionMapper, questionMapper, jobMapper,
-                mock(JobAnalysisMapper.class), jobService, aiService, txService);
+                mock(JobAnalysisMapper.class), jobService, aiService, txService,
+                resumeService, resumeOptimizationService, matchRecordMapper,
+                resumeMapper, resumeOptimizationMapper);
     }
 
     // ---------------------------------------------------------------- 创建（§7.1）
@@ -93,7 +119,7 @@ class InterviewServiceTest {
     @Test
     void create_modelFailure_502AndNothingSaved() {
         when(jobService.getOwnedJob(eq(1L), eq(9L))).thenReturn(job());
-        when(aiService.generate(any(), any(), eq("MIXED"), eq(3)))
+        when(aiService.generate(any(), any(), eq("MIXED"), eq(3), isNull(), isNull()))
                 .thenThrow(BusinessException.aiUnavailable("大模型服务暂时不可用"));
 
         assertThrows(BusinessException.class, () -> service.create(1L, createRequest(9L, 3)));
@@ -105,7 +131,7 @@ class InterviewServiceTest {
     @Test
     void create_success_assemblesCountsAndQuestions() {
         when(jobService.getOwnedJob(eq(1L), eq(9L))).thenReturn(job());
-        when(aiService.generate(any(), any(), eq("MIXED"), eq(3)))
+        when(aiService.generate(any(), any(), eq("MIXED"), eq(3), isNull(), isNull()))
                 .thenReturn(new AiCallResult<>(questionsOutput(2), "test-model", 100L, 1, 1, 2));
         when(txService.saveNewSession(any(), anyList())).thenAnswer(invocation -> {
             InterviewSession session = invocation.getArgument(0);
@@ -120,6 +146,122 @@ class InterviewServiceTest {
         assertEquals(2, response.getGeneratedCount(), "generatedCount 是实际题数（行数）");
         assertEquals(2, response.getQuestions().size());
         assertEquals(InterviewSession.STATUS_ONGOING, response.getStatus());
+    }
+
+    // ---------------------------------------------------------------- 创建·来源与出题上下文（M12）
+
+    @Test
+    void create_withOptimization_derivesSourceAndContext() {
+        when(jobService.getOwnedJob(eq(1L), eq(9L))).thenReturn(job());
+        when(resumeOptimizationService.getOwned(eq(1L), eq(301L)))
+                .thenReturn(optimization(301L, 101L, 9L, 201L));
+        when(matchRecordMapper.selectById(201L)).thenReturn(matchRecord(201L));
+        stubGenerateSuccess();
+
+        InterviewCreateRequest request = createRequest(9L, 3);
+        request.setOptimizationId(301L);
+        service.create(1L, request);
+
+        // 来源三元组由服务端从优化推导：resumeId 取自优化记录，不接受前端组合
+        ArgumentCaptor<InterviewSession> sessionCaptor = ArgumentCaptor.forClass(InterviewSession.class);
+        verify(txService).saveNewSession(sessionCaptor.capture(), anyList());
+        assertEquals(101L, sessionCaptor.getValue().getResumeId());
+        assertEquals(301L, sessionCaptor.getValue().getOptimizationId());
+
+        // 出题上下文：简历块取优化稿当前稿（editedContent 优先），差距块取该优化的匹配记录
+        ArgumentCaptor<String> resumeText = ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<MatchItem>> gaps = ArgumentCaptor.forClass(List.class);
+        verify(aiService).generate(any(), any(), eq("MIXED"), eq(3), resumeText.capture(), gaps.capture());
+        assertEquals("优化后的简历内容", resumeText.getValue());
+        assertEquals(2, gaps.getValue().size(), "missing 在前、partial 在后，各取前 5");
+        assertEquals("简历未体现 Redis 使用经验", gaps.getValue().get(0).getText());
+    }
+
+    @Test
+    void create_optimizationJobMismatch_400AndModelNotCalled() {
+        when(jobService.getOwnedJob(eq(1L), eq(9L))).thenReturn(job());
+        when(resumeOptimizationService.getOwned(eq(1L), eq(301L)))
+                .thenReturn(optimization(301L, 101L, 7L, 201L));
+
+        InterviewCreateRequest request = createRequest(9L, 3);
+        request.setOptimizationId(301L);
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.create(1L, request));
+
+        assertEquals(40000, ex.getCode());
+        verifyNoInteractions(aiService, txService);
+    }
+
+    @Test
+    void create_optimizationWithMismatchedResume_400() {
+        when(jobService.getOwnedJob(eq(1L), eq(9L))).thenReturn(job());
+        when(resumeOptimizationService.getOwned(eq(1L), eq(301L)))
+                .thenReturn(optimization(301L, 101L, 9L, 201L));
+
+        InterviewCreateRequest request = createRequest(9L, 3);
+        request.setOptimizationId(301L);
+        request.setResumeId(999L);
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.create(1L, request));
+
+        assertEquals(40000, ex.getCode());
+        verifyNoInteractions(aiService, txService);
+    }
+
+    @Test
+    void create_optimizationNotOwned_404AndModelNotCalled() {
+        when(jobService.getOwnedJob(eq(1L), eq(9L))).thenReturn(job());
+        when(resumeOptimizationService.getOwned(eq(1L), eq(301L)))
+                .thenThrow(BusinessException.notFound("优化记录不存在"));
+
+        InterviewCreateRequest request = createRequest(9L, 3);
+        request.setOptimizationId(301L);
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.create(1L, request));
+
+        assertEquals(40400, ex.getCode());
+        verifyNoInteractions(aiService, txService);
+    }
+
+    @Test
+    void create_withResumeOnly_usesTextAndLatestMatchGaps() {
+        when(jobService.getOwnedJob(eq(1L), eq(9L))).thenReturn(job());
+        when(resumeService.getOwnedResume(eq(1L), eq(101L))).thenReturn(resume(101L));
+        when(matchRecordMapper.selectOne(any())).thenReturn(matchRecord(201L));
+        stubGenerateSuccess();
+
+        InterviewCreateRequest request = createRequest(9L, 3);
+        request.setResumeId(101L);
+        service.create(1L, request);
+
+        ArgumentCaptor<InterviewSession> sessionCaptor = ArgumentCaptor.forClass(InterviewSession.class);
+        verify(txService).saveNewSession(sessionCaptor.capture(), anyList());
+        assertEquals(101L, sessionCaptor.getValue().getResumeId());
+        assertNull(sessionCaptor.getValue().getOptimizationId());
+
+        verify(aiService).generate(any(), any(), eq("MIXED"), eq(3),
+                eq("简历正文：熟悉 Java 与 Spring"), any());
+    }
+
+    @Test
+    void create_withoutSource_generatesWithNullContext() {
+        when(jobService.getOwnedJob(eq(1L), eq(9L))).thenReturn(job());
+        stubGenerateSuccess();
+
+        service.create(1L, createRequest(9L, 3));
+
+        verify(aiService).generate(any(), any(), eq("MIXED"), eq(3), isNull(), isNull());
+        // 无来源时不查任何上下文资源（与历史行为等价）
+        verifyNoInteractions(resumeService, resumeOptimizationService, matchRecordMapper);
+    }
+
+    /** 出题成功 + 会话落库的最小桩（M12 创建测试共用） */
+    private void stubGenerateSuccess() {
+        when(aiService.generate(any(), any(), eq("MIXED"), eq(3), any(), any()))
+                .thenReturn(new AiCallResult<>(questionsOutput(1), "test-model", 100L, 1, 1, 2));
+        when(txService.saveNewSession(any(), anyList())).thenAnswer(invocation -> {
+            InterviewSession session = invocation.getArgument(0);
+            session.setId(99L);
+            return List.of(question(1L, "题目一", null, null));
+        });
     }
 
     // ---------------------------------------------------------------- 提交回答（§7.2）
@@ -293,6 +435,24 @@ class InterviewServiceTest {
     }
 
     @Test
+    void detail_withSource_fillsResumeNameAndOptimizationVersion() {
+        InterviewSession session = session(10L, InterviewSession.STATUS_ONGOING);
+        session.setResumeId(101L);
+        session.setOptimizationId(301L);
+        when(sessionMapper.selectOne(any())).thenReturn(session);
+        when(questionMapper.selectList(any())).thenReturn(List.of());
+        when(resumeMapper.selectById(101L)).thenReturn(resume(101L));
+        ResumeOptimization optimization = optimization(301L, 101L, 9L, 201L);
+        optimization.setVersionNo(2);
+        when(resumeOptimizationMapper.selectById(301L)).thenReturn(optimization);
+
+        InterviewDetail detail = service.detail(1L, 10L);
+
+        assertEquals("张三-Java后端.pdf", detail.getResumeName());
+        assertEquals(2, detail.getOptimizationVersionNo(), "来源展示：优化版本号（M12）");
+    }
+
+    @Test
     void list_emptyPageDoesNotQueryJobs() {
         Page<InterviewSession> page = new Page<>(1, 10);
         page.setRecords(List.of());
@@ -324,6 +484,38 @@ class InterviewServiceTest {
         request.setQuestionType("MIXED");
         request.setQuestionCount(count);
         return request;
+    }
+
+    private static Resume resume(Long id) {
+        Resume resume = new Resume();
+        resume.setId(id);
+        resume.setName("张三-Java后端.pdf");
+        resume.setContent("简历正文：熟悉 Java 与 Spring");
+        return resume;
+    }
+
+    private static ResumeOptimization optimization(Long id, Long resumeId, Long jobId,
+                                                   Long matchRecordId) {
+        ResumeOptimization optimization = new ResumeOptimization();
+        optimization.setId(id);
+        optimization.setResumeId(resumeId);
+        optimization.setJobId(jobId);
+        optimization.setMatchRecordId(matchRecordId);
+        optimization.setOptimizedContent("模型原稿内容");
+        optimization.setEditedContent("优化后的简历内容");
+        return optimization;
+    }
+
+    private static MatchRecord matchRecord(Long id) {
+        MatchRecord match = new MatchRecord();
+        match.setId(id);
+        MatchItem missing = new MatchItem();
+        missing.setText("简历未体现 Redis 使用经验");
+        MatchItem partial = new MatchItem();
+        partial.setText("Spring 使用经验偏少");
+        match.setMissingItems(List.of(missing));
+        match.setPartialItems(List.of(partial));
+        return match;
     }
 
     private static InterviewQuestionsAiOutput questionsOutput(int count) {

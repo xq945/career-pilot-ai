@@ -25,6 +25,16 @@ public class InterviewView {
 
     private String companyName;
 
+    /** M12：来源简历（可空）；名称由 resume_id 关联查询得到，**不过滤 resume.status** */
+    private Long resumeId;
+
+    private String resumeName;
+
+    /** M12：来源优化记录与版本号（可空） */
+    private Long optimizationId;
+
+    private Integer optimizationVersionNo;
+
     private String questionType;
 
     /** 计划题目数（question_count） */
@@ -82,6 +92,38 @@ public class InterviewView {
 
     public void setCompanyName(String companyName) {
         this.companyName = companyName;
+    }
+
+    public Long getResumeId() {
+        return resumeId;
+    }
+
+    public void setResumeId(Long resumeId) {
+        this.resumeId = resumeId;
+    }
+
+    public String getResumeName() {
+        return resumeName;
+    }
+
+    public void setResumeName(String resumeName) {
+        this.resumeName = resumeName;
+    }
+
+    public Long getOptimizationId() {
+        return optimizationId;
+    }
+
+    public void setOptimizationId(Long optimizationId) {
+        this.optimizationId = optimizationId;
+    }
+
+    public Integer getOptimizationVersionNo() {
+        return optimizationVersionNo;
+    }
+
+    public void setOptimizationVersionNo(Integer optimizationVersionNo) {
+        this.optimizationVersionNo = optimizationVersionNo;
     }
 
     public String getQuestionType() {

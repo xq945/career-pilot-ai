@@ -33,9 +33,16 @@ export function categoryLabel(category) {
  * AI 接口超时统一设 120 秒（《API接口设计》10.3）；生成失败（50200/50201）
  * **不产生空会话**，可直接重试。实际题数可能少于请求的 questionCount（去重后以实际为准），
  * 响应中的 generatedCount 才是落库题数。
+ *
+ * M12：可选携带 `resumeId` / `optimizationId`（来源）——出题将参考候选人简历与能力差距；
+ * 省略时行为与历史一致（`undefined` 不会进入请求体）。
  */
-export function createInterview({ jobId, title, questionType, questionCount }) {
-  return request.post('/interviews', { jobId, title, questionType, questionCount }, { timeout: 120000 })
+export function createInterview({ jobId, title, questionType, questionCount, resumeId, optimizationId }) {
+  return request.post(
+    '/interviews',
+    { jobId, title, questionType, questionCount, resumeId, optimizationId },
+    { timeout: 120000 },
+  )
 }
 
 /** 面试列表（§7.3）：created_at 倒序分页；内联岗位名称与 generatedCount / answeredCount */

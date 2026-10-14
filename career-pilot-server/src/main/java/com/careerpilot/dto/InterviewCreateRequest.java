@@ -32,6 +32,18 @@ public class InterviewCreateRequest {
     @Max(value = 20, message = "题目数量最多为 20")
     private Integer questionCount;
 
+    /**
+     * M12：可选来源——关联简历（出题参考其内容）。
+     * 简历必须属于当前用户（否则 404）；与 {@code optimizationId} 同时提供时必须一致（否则 400）。
+     */
+    private Long resumeId;
+
+    /**
+     * M12：可选来源——关联优化记录（出题参考优化稿当前稿与该优化的匹配差距）。
+     * 优化必须属于当前用户（否则 404）；其岗位必须与 {@code jobId} 一致（否则 400）。
+     */
+    private Long optimizationId;
+
     public Long getJobId() {
         return jobId;
     }
@@ -62,6 +74,22 @@ public class InterviewCreateRequest {
 
     public void setQuestionCount(Integer questionCount) {
         this.questionCount = questionCount;
+    }
+
+    public Long getResumeId() {
+        return resumeId;
+    }
+
+    public void setResumeId(Long resumeId) {
+        this.resumeId = resumeId;
+    }
+
+    public Long getOptimizationId() {
+        return optimizationId;
+    }
+
+    public void setOptimizationId(Long optimizationId) {
+        this.optimizationId = optimizationId;
     }
 
 }
