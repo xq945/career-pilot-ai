@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -30,6 +32,7 @@ import com.careerpilot.dto.ai.InterviewSummaryAiOutput;
 import com.careerpilot.dto.ai.MatchItem;
 import com.careerpilot.entity.InterviewQuestion;
 import com.careerpilot.entity.Job;
+import com.careerpilot.service.skill.InterviewSkillService;
 
 /**
  * 面试三个场景的输出清洗护栏（《Agent设计》§4.6「面试出题 / 面试评价」两行 + 总评）。
@@ -46,8 +49,15 @@ class InterviewAiServiceTest {
     @BeforeEach
     void setUp() {
         template = mock(AiCallTemplate.class);
+        // M15：技能服务 mock——本类只验证输出清洗，不依赖技能文件内容
+        // （技能加载与题量分配算法的测试见 InterviewSkillServiceTest）
+        InterviewSkillService skillService = mock(InterviewSkillService.class);
+        when(skillService.calculateAllocation(anyString(), anyInt())).thenReturn(Collections.emptyMap());
+        when(skillService.currentSkill()).thenReturn(
+                new InterviewSkillService.SkillDefinition("test-skill", "", List.of()));
+        when(skillService.buildReferenceSection(any())).thenReturn("");
         // 读真实提示词资源：模板缺失同样让测试失败（与"启动即失败"的约定一致）
-        service = new InterviewAiService(template,
+        service = new InterviewAiService(template, skillService,
                 new ClassPathResource("prompts/interview-question.system.txt"),
                 new ClassPathResource("prompts/interview-evaluation.system.txt"),
                 new ClassPathResource("prompts/interview-summary.system.txt"));

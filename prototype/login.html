@@ -63,6 +63,14 @@
   .auth__title { font-size: 19px; margin-bottom: 4px; }
   .auth__desc { font-size: 13px; color: var(--ink-500); margin-bottom: 22px; }
 
+  /* 图形验证码（M18）：输入框占满剩余宽度，图片固定 120×40 可点击刷新 */
+  .captcha-row { display: flex; align-items: center; gap: 10px; }
+  .captcha-row .input { flex: 1; min-width: 0; }
+  .captcha-img {
+    flex: 0 0 120px; width: 120px; height: 40px; display: block;
+    border: 1px solid var(--line); border-radius: var(--radius-sm); cursor: pointer;
+  }
+
   @media (max-width: 900px) {
     .auth { grid-template-columns: 1fr; }
     .auth__brand { padding: 32px 28px; }
@@ -154,6 +162,16 @@
         <div class="field">
           <label class="field__label">密码<span class="req">*</span></label>
           <input class="input" type="password" placeholder="请输入密码" autocomplete="current-password">
+        </div>
+
+        <!-- 图形验证码（M18）：输入框 + 可点击刷新的图片，固定在密码之后 -->
+        <div class="field">
+          <label class="field__label">验证码<span class="req">*</span></label>
+          <div class="captcha-row">
+            <input class="input" type="text" placeholder="请输入验证码" maxlength="8" autocomplete="off">
+            <img class="captcha-img" src="assets/captcha-sample.png" alt="验证码，点击刷新" title="点击刷新">
+          </div>
+          <div class="field__hint">看不清？点击图片换一张</div>
         </div>
 
         <button class="btn btn--primary btn--lg btn--block mt-8">登录</button>

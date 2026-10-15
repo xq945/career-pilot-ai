@@ -52,6 +52,20 @@
           故显式声明版本（同 jjwt / mybatis-plus / tika 的处理）。
         -->
         <poi.version>5.5.1</poi.version>
+        <!--
+          Redisson：M16 起「创建优化」异步链路的任务队列（Redis Stream）与卡住任务恢复。
+          选 4.0.0 与参照项目同版本（同代 Boot 4.1 / Spring AI 2.0 栈已被真实验证）。
+        -->
+        <redisson.version>4.0.0</redisson.version>
+        <!--
+          Hutool：M18 登录图形验证码用其 CaptchaUtil 绘制验证码图片。
+          选 5.8.48 = 5.x 线最新稳定版（经 Maven 中央仓库 maven-metadata.xml 核实，
+          最近更新 2026-10）。刻意**不用** 6.x：该线目前只发布到 6.0.0-M* 里程碑版、
+          尚无正式 GA，且已迁至 org.dromara.hutool 命名空间（包名随之变更），
+          不适合作为毕设交付版本的依赖。
+          只引 hutool-captcha（已核实其仅传递 hutool-core），不引 hutool-all。
+        -->
+        <hutool.version>5.8.48</hutool.version>
     </properties>
 
     <dependencyManagement>
@@ -87,6 +101,31 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-deepseek</artifactId>
+        </dependency>
+
+        <!--
+          AI：OpenAI 兼容 Provider（M14 多模型，Kimi/GLM/自定义走 OpenAI 兼容协议）。
+          只引入 **核心库** 而**不引入 starter**：starter 会带来 OpenAiChatAutoConfiguration，
+          与 deepseek starter 的自动配置争抢 ChatModel/ChatClient Bean；本项目由
+          LlmProviderRegistry 手工构建 OpenAI 兼容 ChatModel（可用性已验证，
+          见《系统架构设计》§11 的 V8 结论）。版本由 spring-ai-bom 统一管理。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-openai</artifactId>
+        </dependency>
+
+        <!-- ===== Redis（M16：创建优化链路的任务队列与卡住任务恢复） ===== -->
+        <!--
+          只引 **核心包 + 自建 RedissonClient Bean**（不引 redisson-spring-boot-starter）：
+          绕开 spring-data-redis 集成层、配置显式、依赖面最小（《系统架构设计》§2）。
+          版本 4.0.0 与参照项目一致（同代技术栈已真实验证）；其 Stream 空结果的已知坑
+          在 RedisStreamService 中按参照做法规避。
+        -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <version>${redisson.version}</version>
         </dependency>
 
         <!-- ===== 持久层 ===== -->
@@ -129,6 +168,13 @@
             <artifactId>jjwt-jackson</artifactId>
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- ===== 登录图形验证码（M18） ===== -->
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-captcha</artifactId>
+            <version>${hutool.version}</version>
         </dependency>
 
         <!-- ===== 文件文本提取 ===== -->

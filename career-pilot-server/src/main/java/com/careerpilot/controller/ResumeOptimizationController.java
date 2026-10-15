@@ -92,6 +92,15 @@ public class ResumeOptimizationController {
     }
 
     /**
+     * 手动重试失败的任务（6A.7，M16）：仅 FAILED 可重试；重置为 PENDING 后重新入队
+     * （入队失败降级为同步执行）；返回与详情接口一致的结构。
+     */
+    @PostMapping("/{id}/retry")
+    public ApiResponse<ResumeOptimizationDetail> retry(@PathVariable Long id) {
+        return ApiResponse.success(optimizationService.retry(CurrentUser.requireId(), id));
+    }
+
+    /**
      * 导出优化稿 DOCX（6A.6）：内容取用户编辑稿（为空时回落模型原稿）。
      *
      * 响应体是文件二进制（失败时仍是统一结构的 JSON）；**不落盘**，字节流直接下发。

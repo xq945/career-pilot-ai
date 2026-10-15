@@ -6,6 +6,7 @@ import {
   Aim,
   ArrowDown,
   Briefcase,
+  Calendar,
   ChatDotRound,
   ChatLineSquare,
   Document,
@@ -32,12 +33,13 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const NAV_ITEMS = [
-  { path: '/dashboard', text: '仪表盘', icon: Odometer, ready: true },
+  { path: '/dashboard', text: '工作台', icon: Odometer, ready: true },
   { path: '/agent', text: '求职智能体', icon: ChatDotRound, ready: true },
   { path: '/resumes', text: '简历管理', icon: Document, ready: true },
   { path: '/jobs', text: '岗位管理', icon: Briefcase, ready: true },
   { path: '/optimizations', text: '简历定向优化', icon: Aim, ready: true },
   { path: '/interviews', text: 'AI 面试', icon: ChatLineSquare, ready: true },
+  { path: '/schedules', text: '面试日程', icon: Calendar, ready: true },
   { path: '/profile', text: '个人中心', icon: User, ready: true },
 ]
 

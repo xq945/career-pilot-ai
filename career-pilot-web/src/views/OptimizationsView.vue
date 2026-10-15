@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { MagicStick, Plus } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
@@ -28,6 +28,7 @@ import StateBlock from '@/components/StateBlock.vue'
 const PAGE_SIZE = 10
 
 const router = useRouter()
+const route = useRoute()
 
 /* ---------------------------------------------------------------- 列表 */
 
@@ -63,6 +64,21 @@ const formatTime = (iso) => dayjs(iso).format('YYYY-MM-DD HH:mm')
 /** 分数展示去掉尾零（76.50 → 76.5）；分数本身由后端计算，前端不加工 */
 const displayScore = (score) => (score === null || score === undefined ? '待评估' : Number(score))
 
+/** M16：任务状态标签（列表含 PENDING/PROCESSING/FAILED 的任务行） */
+const TASK_TAG_LABELS = { PENDING: '排队中', PROCESSING: '生成中', FAILED: '生成失败' }
+
+const taskTagText = (status) => TASK_TAG_LABELS[status] ?? status
+
+const taskTagType = (status) => {
+  if (status === 'FAILED') {
+    return 'danger'
+  }
+  if (status === 'PENDING' || status === 'PROCESSING') {
+    return 'primary'
+  }
+  return 'info'
+}
+
 /** 分数语义色标签（§5.7）：≥80 绿、60–79 蓝、<60 橙；null（未评估）用中性色 */
 function scoreType(score) {
   if (score === null || score === undefined) {
@@ -81,7 +97,13 @@ function openDetail(item) {
   router.push({ name: 'optimization-detail', params: { id: item.id } })
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  // 工作台快捷操作与工作流卡「粘贴 JD」带 `?create=1` 进入：直接打开新建弹窗
+  if (route.query.create) {
+    openCreate()
+  }
+})
 
 /* ---------------------------------------------------------------- 新建优化 */
 
@@ -185,7 +207,7 @@ async function submit() {
     step.value = 'optimizing'
     const data = await createOptimization({ resumeId: resumeId.value, jobId: targetJobId })
     dialogVisible.value = false
-    ElMessage.success('优化完成')
+    ElMessage.success('已提交，优化任务在后台执行')
     router.push({ name: 'optimization-detail', params: { id: data.id } })
   }
   catch (error) {
@@ -267,12 +289,18 @@ const submitErrorText = computed(() => {
             <div class="item__main">
               <div class="item__title">
                 <span class="item__name">{{ item.jobName }}</span>
-                <el-tag :type="scoreType(item.matchScore)" size="small" effect="light">
-                  {{ displayScore(item.matchScore) }}
-                </el-tag>
-                <span class="item__arrow">→</span>
-                <el-tag :type="scoreType(item.scoreAfter)" size="small" effect="light">
-                  {{ displayScore(item.scoreAfter) }}
+                <!-- M16：任务未成功完成时展示状态标签（分数尚未产生） -->
+                <template v-if="item.status === 'SUCCESS'">
+                  <el-tag :type="scoreType(item.matchScore)" size="small" effect="light">
+                    {{ displayScore(item.matchScore) }}
+                  </el-tag>
+                  <span class="item__arrow">→</span>
+                  <el-tag :type="scoreType(item.scoreAfter)" size="small" effect="light">
+                    {{ displayScore(item.scoreAfter) }}
+                  </el-tag>
+                </template>
+                <el-tag v-else :type="taskTagType(item.status)" size="small" effect="light">
+                  {{ taskTagText(item.status) }}
                 </el-tag>
               </div>
               <div class="item__meta">

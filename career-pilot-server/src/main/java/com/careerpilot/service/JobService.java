@@ -3,6 +3,7 @@ package com.careerpilot.service;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
@@ -58,6 +59,8 @@ public class JobService {
         // description 原样入库：**不 trim 不做任何 normalize**——它是 source_hash 的计算基准，
         // stale 判定建立在"所见即所存"之上（《数据库设计》5.2），请勿在此加工
         job.setDescription(request.getDescription());
+        // 投递链接是**普通可空文本**（不是 hash 基准），与公司名同样归一：空串 → null，其余 trim
+        job.setApplyUrl(normalizeApplyUrl(request.getApplyUrl()));
         job.setStatus(Job.STATUS_ACTIVE);
         // 显式设置时间：MP 的 insert 不会回读数据库默认值（同 ResumeService.upload）；
         // 裁到秒与 DATETIME(0) 对齐（MySQL 对低精度目标按舍入处理，不裁会出现跨接口 1 秒抖动）
@@ -107,6 +110,7 @@ public class JobService {
         String companyName = normalizeCompanyName(request.getCompanyName());
         String jobName = request.getJobName().trim();
         String description = request.getDescription();
+        String applyUrl = normalizeApplyUrl(request.getApplyUrl());
         LocalDateTime now = LocalDateTime.now().withNano(0);
 
         jobMapper.update(null, Wrappers.<Job>lambdaUpdate()
@@ -116,11 +120,13 @@ public class JobService {
                 .set(Job::getUpdatedAt, now)
                 .set(Job::getCompanyName, companyName)
                 .set(Job::getJobName, jobName)
-                .set(Job::getDescription, description));
+                .set(Job::getDescription, description)
+                .set(Job::getApplyUrl, applyUrl));
 
         job.setCompanyName(companyName);
         job.setJobName(jobName);
         job.setDescription(description);
+        job.setApplyUrl(applyUrl);
         job.setUpdatedAt(now);
 
         // 描述变化后，旧分析的 source_hash 与之不再一致 → stale=true（§5.4）
@@ -213,6 +219,7 @@ public class JobService {
         view.setId(job.getId());
         view.setCompanyName(job.getCompanyName());
         view.setJobName(job.getJobName());
+        view.setApplyUrl(job.getApplyUrl());
         view.setCreatedAt(job.getCreatedAt());
         view.setUpdatedAt(job.getUpdatedAt());
         view.setAnalyzed(latest != null);
@@ -227,6 +234,7 @@ public class JobService {
         detail.setCompanyName(job.getCompanyName());
         detail.setJobName(job.getJobName());
         detail.setDescription(job.getDescription());
+        detail.setApplyUrl(job.getApplyUrl());
         detail.setCreatedAt(job.getCreatedAt());
         detail.setUpdatedAt(job.getUpdatedAt());
         detail.setAnalyzed(analyzed);
@@ -236,10 +244,35 @@ public class JobService {
 
     /** 空串/全空白 → null（清空公司名的语义，与 UserService.normalizeNickname 一致）；其余 trim */
     private static String normalizeCompanyName(String companyName) {
-        if (companyName == null) {
+        return normalizeOptional(companyName);
+    }
+
+    /**
+     * 投递链接（M19）：空串/全空白 → null（清空语义同公司名）；非空时协议必须是 http/https。
+     *
+     * 协议白名单是**安全约束而非格式偏好**：该值最终由前端 {@code window.open} 打开，
+     * 若放任 {@code javascript:} 等伪协议入库，点击「投递」即执行脚本。
+     * 比较大小写不敏感（`HTTP://` 是合法写法）；不合法抛 40000（通用参数错误），
+     * 不用 40001——后者是 Bean Validation 的字段级校验出口，本校验在其之后。
+     */
+    private static String normalizeApplyUrl(String applyUrl) {
+        String url = normalizeOptional(applyUrl);
+        if (url == null) {
             return null;
         }
-        String trimmed = companyName.trim();
+        String lower = url.toLowerCase(Locale.ROOT);
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
+            throw BusinessException.badRequest("投递链接需以 http:// 或 https:// 开头");
+        }
+        return url;
+    }
+
+    /** 可空文本的统一归一：空串/全空白 → null，其余 trim（公司名与投递链接共用） */
+    private static String normalizeOptional(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
     }
 

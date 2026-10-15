@@ -154,6 +154,61 @@ class JobServiceTest {
         assertThat(detail.isStale()).isFalse();                       // 描述未变 → 仍不过期
     }
 
+    // ---------------------------------------------------------------- 投递链接（M19）
+
+    @Test
+    void create_applyUrlOptionalAndNormalized() {
+        // 缺省（null）→ null
+        assertThat(service.create(1L, request("示例科技", "岗位", "描述")).getApplyUrl()).isNull();
+        // 全空白 → null（"清空"语义，同公司名）
+        assertThat(service.create(1L, request("示例科技", "岗位", "描述", "   ")).getApplyUrl()).isNull();
+        // 合法链接 → trim 后入库
+        assertThat(service.create(1L, request("示例科技", "岗位", "描述", "  https://a.com/x  "))
+                .getApplyUrl()).isEqualTo("https://a.com/x");
+        // 协议大小写不敏感（HTTP:// 是合法写法）
+        assertThat(service.create(1L, request("示例科技", "岗位", "描述", "HTTPS://a.com/x"))
+                .getApplyUrl()).isEqualTo("HTTPS://a.com/x");
+    }
+
+    @Test
+    void create_rejectsNonHttpApplyUrl() {
+        // javascript: 伪协议若入库，前端 window.open 点击即执行脚本——必须在服务层拦下
+        assertThatThrownBy(() -> service.create(1L, request("示例科技", "岗位", "描述", "javascript:alert(1)")))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(40000));
+        assertThatThrownBy(() -> service.create(1L, request("示例科技", "岗位", "描述", "ftp://a.com/x")))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(40000));
+    }
+
+    @Test
+    void list_exposesApplyUrlForApplyButton() {
+        Job withUrl = job(1L, "岗位A", "描述A");
+        withUrl.setApplyUrl("https://www.example.com/job/1");
+        doReturn(pageOf(withUrl)).when(jobMapper).selectPage(any(), any());
+        when(jobAnalysisMapper.selectList(any())).thenReturn(List.of());
+
+        PageResult<JobView> result = service.list(1L, new PageQuery());
+
+        // 列表项带 applyUrl，前端据此渲染「投递」按钮
+        assertThat(result.getRecords().get(0).getApplyUrl()).isEqualTo("https://www.example.com/job/1");
+    }
+
+    @Test
+    void update_applyUrlFollowsFullUpdateSemantics() {
+        when(jobMapper.selectOne(any())).thenReturn(job(5L, "岗位", "描述"));
+
+        // 全量更新：省略/空白 → 清空
+        assertThat(service.update(1L, 5L, request("示例科技", "岗位", "描述", "   ")).getApplyUrl()).isNull();
+        // 合法值 → 写入并回显
+        assertThat(service.update(1L, 5L, request("示例科技", "岗位", "描述", "https://a.com/x"))
+                .getApplyUrl()).isEqualTo("https://a.com/x");
+        // 非法协议 → 40000，整体拒绝（不落库）
+        assertThatThrownBy(() -> service.update(1L, 5L, request("示例科技", "岗位", "描述", "ftp://a.com/x")))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(40000));
+    }
+
     // ---------------------------------------------------------------- 测试数据
 
     private static Job job(Long id, String jobName, String description) {
@@ -178,10 +233,15 @@ class JobServiceTest {
     }
 
     private static JobSaveRequest request(String companyName, String jobName, String description) {
+        return request(companyName, jobName, description, null);
+    }
+
+    private static JobSaveRequest request(String companyName, String jobName, String description, String applyUrl) {
         JobSaveRequest request = new JobSaveRequest();
         request.setCompanyName(companyName);
         request.setJobName(jobName);
         request.setDescription(description);
+        request.setApplyUrl(applyUrl);
         return request;
     }
 

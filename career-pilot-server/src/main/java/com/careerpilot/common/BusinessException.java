@@ -22,6 +22,17 @@ public class BusinessException extends RuntimeException {
         return new BusinessException(40000, 400, message);
     }
 
+    /**
+     * 400 / 40002 图形验证码错误或已失效（M18）。
+     *
+     * 输错、过期、重复使用、标识缺失/不存在一律用本码与**同一文案**——不向调用方区分
+     * "输错了"与"已失效"，与登录接口不区分"账号不存在"与"密码错误"的口径一致
+     * （《API接口设计》§1/A01）。前端只需一套处理逻辑：提示 + 刷新验证码。
+     */
+    public static BusinessException captchaInvalid(String message) {
+        return new BusinessException(40002, 400, message);
+    }
+
     /** 401 / 40100 未登录或 Token 无效 */
     public static BusinessException unauthorized(String message) {
         return new BusinessException(40100, 401, message);
@@ -65,6 +76,16 @@ public class BusinessException extends RuntimeException {
     /** 502 / 50201 大模型输出无法解析（未保存任何结果，可重试） */
     public static BusinessException aiInvalidOutput(String message) {
         return new BusinessException(50201, 502, message);
+    }
+
+    /**
+     * 500 / 50000 服务端内部错误（M14 新增，当前用于模型服务 API Key 的加解密失败：
+     * 加密主密钥变更等配置问题，属于服务端状态而非客户端请求错误）。
+     *
+     * 消息面向用户可读，但**不得包含明文 Key、密文或异常细节**（《系统架构设计》§7.4）。
+     */
+    public static BusinessException internalError(String message) {
+        return new BusinessException(50000, 500, message);
     }
 
     public int getCode() {

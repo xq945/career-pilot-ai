@@ -26,6 +26,16 @@ public class JobSaveRequest {
     @Size(max = 10000, message = "岗位描述不能超过 10000 个字符")
     private String description;
 
+    /**
+     * 投递网页链接（M19 新增，选填）：前端列表「投递」按钮跳转的目标地址。
+     *
+     * **不加 `@Pattern`**：空串/全空白表示清空（与 {@code companyName} 同语义），
+     * 而 `@Pattern` 对空串判失败、对 null 放行，无法同时表达"可清空"与"填了就必须合法"。
+     * 协议白名单（http/https）在 {@code JobService.normalizeApplyUrl} 中校验（40000）。
+     */
+    @Size(max = 500, message = "投递链接不能超过 500 个字符")
+    private String applyUrl;
+
     public String getCompanyName() {
         return companyName;
     }
@@ -48,6 +58,14 @@ public class JobSaveRequest {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getApplyUrl() {
+        return applyUrl;
+    }
+
+    public void setApplyUrl(String applyUrl) {
+        this.applyUrl = applyUrl;
     }
 
 }

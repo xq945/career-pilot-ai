@@ -364,7 +364,7 @@ async function createMatch(token, resumeId, jobId) {
   return body.data
 }
 
-/** 创建简历定向优化（匹配 + 优化生成，2 次模型调用；要求双方都有未过期的分析） */
+/** 创建简历定向优化（M16 异步任务：创建后轮询至完成；要求双方都有未过期的分析） */
 async function createOptimization(token, resumeId, jobId) {
   const body = await api('/optimizations', {
     method: 'POST',
@@ -375,7 +375,20 @@ async function createOptimization(token, resumeId, jobId) {
   if (body.code !== 0) {
     throw new Error(`创建优化失败：${body.message}`)
   }
-  return body.data
+  // M16：异步化——轮询详情直到任务完成（演示数据需要完整的优化稿与匹配分数）
+  const deadline = Date.now() + 240000
+  while (Date.now() < deadline) {
+    const detail = await api(`/optimizations/${body.data.id}`, { token })
+    const status = detail.data?.status
+    if (status === 'SUCCESS') {
+      return detail.data
+    }
+    if (status === 'FAILED') {
+      throw new Error(`优化任务失败：${detail.data?.errorMessage}`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3000))
+  }
+  throw new Error(`优化任务超时未完成：id=${body.data.id}`)
 }
 
 /** 创建面试会话（题目随会话一次性生成） */

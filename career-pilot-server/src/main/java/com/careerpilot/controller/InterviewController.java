@@ -84,4 +84,14 @@ public class InterviewController {
         return ApiResponse.success(interviewService.report(CurrentUser.requireId(), id));
     }
 
+    /**
+     * 重新生成总评（§7.5，M15）：仅已完成会话可调用；使用**创建会话时钉住的模型服务**
+     * 重新生成，成功覆盖总评并标注来源 `AI`；**失败（502）时原总评保持不变**；
+     * 响应与报告接口结构一致。
+     */
+    @PostMapping("/{id}/summary/regenerate")
+    public ApiResponse<InterviewReport> regenerateSummary(@PathVariable Long id) {
+        return ApiResponse.success(interviewService.regenerateSummary(CurrentUser.requireId(), id));
+    }
+
 }

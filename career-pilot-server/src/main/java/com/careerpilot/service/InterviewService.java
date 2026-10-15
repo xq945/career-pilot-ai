@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -49,6 +50,7 @@ import com.careerpilot.mapper.MatchRecordMapper;
 import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.ai.InterviewAiService;
+import com.careerpilot.service.ai.InterviewSummaryFallback;
 
 /**
  * 面试业务编排（《API接口设计》§7）：创建、提交回答、列表、详情、报告。
@@ -71,6 +73,15 @@ public class InterviewService {
     /** 能力差距块：missing / partial 各取的条数上限（M12，收口方案 §4.3） */
     private static final int GAP_ITEMS_PER_KIND = 5;
 
+    /** M15：历史题去重——按题型取最近 N 场会话 */
+    private static final int HISTORICAL_SESSION_LIMIT = 10;
+
+    /** M15：历史题去重——知识点摘要注入上限（去重后） */
+    private static final int HISTORICAL_TOPIC_LIMIT = 60;
+
+    /** M15：历史题摘要缺失（M15 前的数据）时回退题干截取长度 */
+    private static final int HISTORICAL_QUESTION_FALLBACK_LENGTH = 30;
+
     private final InterviewSessionMapper interviewSessionMapper;
 
     private final InterviewQuestionMapper interviewQuestionMapper;
@@ -84,6 +95,9 @@ public class InterviewService {
     private final InterviewAiService interviewAiService;
 
     private final InterviewTxService interviewTxService;
+
+    /** M15：总评失败时的降级汇总（确定性拼装，不伪造分数 / 不新增事实） */
+    private final InterviewSummaryFallback interviewSummaryFallback;
 
     // M12（《一体化工作流收口方案》§4.3）：来源与出题上下文装配
     private final ResumeService resumeService;
@@ -103,6 +117,7 @@ public class InterviewService {
                             JobService jobService,
                             InterviewAiService interviewAiService,
                             InterviewTxService interviewTxService,
+                            InterviewSummaryFallback interviewSummaryFallback,
                             ResumeService resumeService,
                             ResumeOptimizationService resumeOptimizationService,
                             MatchRecordMapper matchRecordMapper,
@@ -115,6 +130,7 @@ public class InterviewService {
         this.jobService = jobService;
         this.interviewAiService = interviewAiService;
         this.interviewTxService = interviewTxService;
+        this.interviewSummaryFallback = interviewSummaryFallback;
         this.resumeService = resumeService;
         this.resumeOptimizationService = resumeOptimizationService;
         this.matchRecordMapper = matchRecordMapper;
@@ -139,16 +155,22 @@ public class InterviewService {
         // M12：来源与出题上下文（归属/一致性校验在内；无来源时退化为历史行为）
         CreateContext context = resolveCreateContext(userId, request);
 
+        // M15：同题型历史题知识点摘要（跨会话去重；加载失败不阻断出题）
+        List<String> historicalTopics = loadHistoricalTopics(userId, request.getQuestionType());
+
         // 模型调用（通常 10–40 秒）：事务之外
         AiCallResult<InterviewQuestionsAiOutput> result = interviewAiService.generate(
                 job, analysis, request.getQuestionType(), request.getQuestionCount(),
-                context.resumeText(), context.gapItems());
+                context.resumeText(), context.gapItems(), historicalTopics);
 
         InterviewSession session = new InterviewSession();
         session.setUserId(userId);
         session.setJobId(job.getId());
         session.setResumeId(context.resumeId());
         session.setOptimizationId(context.optimizationId());
+        // M14：钉住出题**实际使用**的模型服务与模型名（快照列，不建外键，《数据库设计》5.13）
+        session.setLlmProviderKey(result.providerKey());
+        session.setLlmModel(result.modelName());
         session.setTitle(request.getTitle().trim());
         session.setQuestionType(request.getQuestionType());
         session.setQuestionCount(request.getQuestionCount());
@@ -198,6 +220,10 @@ public class InterviewService {
         if (request.getOptimizationId() != null) {
             ResumeOptimization optimization =
                     resumeOptimizationService.getOwned(userId, request.getOptimizationId());
+            // M16：异步化后优化存在"生成中/失败"态——未成功完成的记录没有可用产物，不得作为面试来源
+            if (!ResumeOptimization.STATUS_SUCCESS.equals(optimization.getStatus())) {
+                throw BusinessException.badRequest("该优化尚未生成完成，请完成后重试");
+            }
             if (!optimization.getJobId().equals(request.getJobId())) {
                 throw BusinessException.badRequest("所选优化记录与目标岗位不一致");
             }
@@ -305,12 +331,117 @@ public class InterviewService {
         try {
             AiCallResult<InterviewSummaryAiOutput> summary = interviewAiService.summarize(
                     job, session.getQuestionType(), outcome.questions(), outcome.totalScore());
-            interviewTxService.saveSummary(session.getId(), summary.value());
+            interviewTxService.saveSummary(session.getId(), summary.value(),
+                    InterviewTxService.SUMMARY_SOURCE_AI);
         }
         catch (RuntimeException ex) {
-            log.warn("总评生成失败，本次提交仍成功（可重答触发重新生成）：sessionId={} 异常={}",
+            // M15：失败不阻断提交，但**不再静默缺失**——写入确定性降级总评（DEGRADED），
+            // 用户可在报告页「重新生成总评」获取模型版（§7.5）
+            log.warn("总评生成失败，写入降级版（系统汇总）：sessionId={} 异常={}",
                     session.getId(), ex.getClass().getSimpleName());
+            try {
+                InterviewSummaryAiOutput fallback = interviewSummaryFallback.build(
+                        outcome.questions(), outcome.totalScore());
+                interviewTxService.saveSummary(session.getId(), fallback,
+                        InterviewTxService.SUMMARY_SOURCE_DEGRADED);
+            }
+            catch (RuntimeException fallbackEx) {
+                // 降级写入也失败（如数据库异常）：总评保持缺失，仍不使提交失败
+                log.warn("降级总评写入失败，总评保持缺失：sessionId={} 异常={}",
+                        session.getId(), fallbackEx.getClass().getSimpleName());
+            }
         }
+    }
+
+    // ---------------------------------------------------------------- 重新生成总评（§7.5，M15）
+
+    /**
+     * 重新生成总评（§7.5）：仅**已完成**会话可调用；使用**创建时钉住的模型服务**
+     * （快照列 `llm_provider_key`；服务不可用时由注册中心回退平台默认）重新生成。
+     *
+     * <p>与完成路径的差异：本接口由用户显式发起，**失败（502）向上抛出、原总评保持不变**
+     * ——不写入降级版（否则"用户点了一次重新生成、结果仍是降级"）。
+     *
+     * @return 与报告接口结构一致的完整报告（前端直接刷新）
+     */
+    public InterviewReport regenerateSummary(Long userId, Long sessionId) {
+        InterviewSession session = getOwnedSession(userId, sessionId);
+        List<InterviewQuestion> questions = listQuestions(session.getId());
+        long answeredCount = questions.stream().filter(question -> question.getAnswer() != null).count();
+        if (questions.isEmpty() || answeredCount != questions.size()) {
+            throw BusinessException.badRequest("面试尚未完成，无法生成总评");
+        }
+        Job job = requireJob(session.getJobId());
+
+        // 模型调用（通常 10–30 秒）：事务之外；失败（502）在此抛出，原总评保持不变
+        AiCallResult<InterviewSummaryAiOutput> summary = interviewAiService.summarize(
+                job, session.getQuestionType(), questions, session.getTotalScore(),
+                session.getLlmProviderKey());
+        interviewTxService.saveSummary(session.getId(), summary.value(),
+                InterviewTxService.SUMMARY_SOURCE_AI);
+        log.info("总评已重新生成：sessionId={} providerKey={}",
+                session.getId(), session.getLlmProviderKey());
+        return report(userId, sessionId);
+    }
+
+    // ---------------------------------------------------------------- 历史题去重（M15）
+
+    /**
+     * 同题型历史题的知识点摘要（M15 出题去重）：取最近 {@value #HISTORICAL_SESSION_LIMIT} 场
+     * 会话的题目，优先用 `topic_summary`、缺失（M15 前的历史数据）时回退题干前 30 字；
+     * 去重后截断到 {@value #HISTORICAL_TOPIC_LIMIT} 条。
+     *
+     * <p>加载失败（数据库抖动等）**不阻断出题**——返回空列表，本次不注入去重块。
+     */
+    private List<String> loadHistoricalTopics(Long userId, String questionType) {
+        try {
+            List<InterviewSession> sessions = interviewSessionMapper.selectList(
+                    Wrappers.<InterviewSession>lambdaQuery()
+                            .select(InterviewSession::getId)
+                            .eq(InterviewSession::getUserId, userId)
+                            .eq(InterviewSession::getQuestionType, questionType)
+                            .orderByDesc(InterviewSession::getId)
+                            .last("LIMIT " + HISTORICAL_SESSION_LIMIT));
+            if (sessions.isEmpty()) {
+                return List.of();
+            }
+            List<Long> sessionIds = sessions.stream().map(InterviewSession::getId).toList();
+            List<InterviewQuestion> questions = interviewQuestionMapper.selectList(
+                    Wrappers.<InterviewQuestion>lambdaQuery()
+                            .select(InterviewQuestion::getQuestion, InterviewQuestion::getTopicSummary)
+                            .in(InterviewQuestion::getSessionId, sessionIds)
+                            .orderByDesc(InterviewQuestion::getId));
+            LinkedHashSet<String> topics = new LinkedHashSet<>();
+            for (InterviewQuestion question : questions) {
+                if (topics.size() >= HISTORICAL_TOPIC_LIMIT) {
+                    break;
+                }
+                String topic = question.getTopicSummary();
+                if (topic == null || topic.isBlank()) {
+                    topic = truncateForHistory(question.getQuestion());
+                }
+                if (topic != null && !topic.isBlank()) {
+                    topics.add(topic);
+                }
+            }
+            return List.copyOf(topics);
+        }
+        catch (RuntimeException ex) {
+            log.warn("历史题摘要加载失败，本次出题不注入去重块：userId={} 题型={} 异常={}",
+                    userId, questionType, ex.getClass().getSimpleName());
+            return List.of();
+        }
+    }
+
+    /** 题干折叠空白后截取前 N 字（历史题摘要缺失时的回退） */
+    private static String truncateForHistory(String question) {
+        if (question == null) {
+            return null;
+        }
+        String flat = question.replaceAll("\\s+", " ").strip();
+        return flat.length() > HISTORICAL_QUESTION_FALLBACK_LENGTH
+                ? flat.substring(0, HISTORICAL_QUESTION_FALLBACK_LENGTH) + "…"
+                : flat;
     }
 
     // ---------------------------------------------------------------- 列表与详情（§7.3）
@@ -398,6 +529,9 @@ public class InterviewService {
         report.setStrengths(completed ? session.getStrengths() : null);
         report.setWeaknesses(completed ? session.getWeaknesses() : null);
         report.setRecommendations(completed ? session.getRecommendations() : null);
+        // M15：总评来源与生成时间（历史数据为 null，前端按「AI（版本较早）」处理）
+        report.setSummarySource(completed ? session.getSummarySource() : null);
+        report.setSummaryGeneratedAt(completed ? session.getSummaryGeneratedAt() : null);
         // 分类得分仅统计已作答题目（未完成时返回部分统计）
         report.setCategoryScores(categoryScores(questions));
         report.setQuestions(questions.stream().map(InterviewService::toReportQuestion).toList());

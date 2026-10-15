@@ -37,7 +37,20 @@ import com.careerpilot.dto.ai.ResumeAnalysisAiOutput;
 public class ResumeOptimization {
 
     /** 记录状态：成功（第一版只存成功结果，同《数据库设计》5.3） */
+    /** M16：任务状态机（《数据库设计》5.15）——创建接口先落 PENDING、入队；后台任务推进到终态 */
+    public static final String STATUS_PENDING = "PENDING";
+
+    public static final String STATUS_PROCESSING = "PROCESSING";
+
     public static final String STATUS_SUCCESS = "SUCCESS";
+
+    /** 任务失败终态（M16；失败原因写入 error_message，用户可手动重试） */
+    public static final String STATUS_FAILED = "FAILED";
+
+    /** M16：任务阶段（stage 列，仅 PROCESSING 阶段有值） */
+    public static final String STAGE_MATCHING = "MATCHING";
+
+    public static final String STAGE_GENERATING = "GENERATING";
 
     @TableId(type = IdType.AUTO)
     private Long id;
@@ -84,6 +97,21 @@ public class ResumeOptimization {
     private LocalDateTime evaluatedAt;
 
     private String modelName;
+
+    /** M16：执行代次围栏（仅 PENDING/PROCESSING 阶段有值；所有状态写入都要求与它双条件匹配，防旧消费者写终态） */
+    private String attemptId;
+
+    /** M16：当前阶段（MATCHING/GENERATING；仅 PROCESSING 阶段有值） */
+    private String stage;
+
+    /** M16：开始执行时间 */
+    private LocalDateTime startedAt;
+
+    /** M16：终态时间（SUCCESS/FAILED 时写入） */
+    private LocalDateTime finishedAt;
+
+    /** M14：创建时钉住的模型服务标识（快照列，不建外键；未配置用户为 null） */
+    private String llmProviderKey;
 
     private String status;
 
@@ -219,6 +247,46 @@ public class ResumeOptimization {
 
     public void setModelName(String modelName) {
         this.modelName = modelName;
+    }
+
+    public String getLlmProviderKey() {
+        return llmProviderKey;
+    }
+
+    public void setLlmProviderKey(String llmProviderKey) {
+        this.llmProviderKey = llmProviderKey;
+    }
+
+    public String getAttemptId() {
+        return attemptId;
+    }
+
+    public void setAttemptId(String attemptId) {
+        this.attemptId = attemptId;
+    }
+
+    public String getStage() {
+        return stage;
+    }
+
+    public void setStage(String stage) {
+        this.stage = stage;
+    }
+
+    public LocalDateTime getStartedAt() {
+        return startedAt;
+    }
+
+    public void setStartedAt(LocalDateTime startedAt) {
+        this.startedAt = startedAt;
+    }
+
+    public LocalDateTime getFinishedAt() {
+        return finishedAt;
+    }
+
+    public void setFinishedAt(LocalDateTime finishedAt) {
+        this.finishedAt = finishedAt;
     }
 
     public String getStatus() {

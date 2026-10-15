@@ -28,4 +28,17 @@ public final class CurrentUser {
         return require().id();
     }
 
+    /**
+     * 尽力取当前用户 ID：无认证上下文时返回 null，不抛异常。
+     * （M14：AiCallTemplate 在无请求上下文的场景——如未来的定时任务与测试——
+     * 回退平台默认模型服务，而非直接失败。）
+     */
+    public static Long idOrNull() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof AuthenticatedUser user)) {
+            return null;
+        }
+        return user.id();
+    }
+
 }

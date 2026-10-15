@@ -20,6 +20,9 @@ public class JobDetail {
 
     private String description;
 
+    /** 投递网页链接（M19 新增）：编辑弹窗回填用 */
+    private String applyUrl;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -58,6 +61,14 @@ public class JobDetail {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getApplyUrl() {
+        return applyUrl;
+    }
+
+    public void setApplyUrl(String applyUrl) {
+        this.applyUrl = applyUrl;
     }
 
     public LocalDateTime getCreatedAt() {

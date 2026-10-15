@@ -35,7 +35,7 @@ const routes = [
         path: 'dashboard',
         name: 'dashboard',
         component: () => import('@/views/DashboardView.vue'),
-        meta: { title: '仪表盘', group: '总览' },
+        meta: { title: '工作台', group: '总览' },
       },
       {
         path: 'agent',
@@ -98,10 +98,24 @@ const routes = [
         meta: { title: '面试报告', group: 'AI 分析与练习' },
       },
       {
+        // M17（§5.15）：真实面试日程（与「AI 面试」相邻但语义不同，不建立数据关联）
+        path: 'schedules',
+        name: 'schedules',
+        component: () => import('@/views/SchedulesView.vue'),
+        meta: { title: '面试日程', group: 'AI 分析与练习' },
+      },
+      {
         path: 'profile',
         name: 'profile',
         component: () => import('@/views/ProfileView.vue'),
         meta: { title: '个人中心', group: '账号' },
+      },
+      {
+        // M14（§5.14）：个人中心子路由，侧栏不加导航项
+        path: 'profile/providers',
+        name: 'profile-providers',
+        component: () => import('@/views/LlmProvidersView.vue'),
+        meta: { title: '模型服务', group: '账号' },
       },
     ],
   },

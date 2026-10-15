@@ -1,10 +1,11 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 
-import { categoryLabel, getInterviewReport, TYPE_LABELS } from '@/api/interview'
+import { categoryLabel, getInterviewReport, regenerateSummary, TYPE_LABELS } from '@/api/interview'
 import ScoreRing from '@/components/ScoreRing.vue'
 import StateBlock from '@/components/StateBlock.vue'
 
@@ -46,6 +47,33 @@ async function load() {
 }
 
 onMounted(load)
+
+/* ---------- 重新生成总评（§7.5，M15）：成功覆盖、失败保持原值 ---------- */
+const regenerating = ref(false)
+
+async function handleRegenerate() {
+  try {
+    await ElMessageBox.confirm(
+      '将调用模型重新生成本场总评（消耗一次模型调用）。失败时原总评保持不变。',
+      '重新生成总评',
+      { type: 'info', confirmButtonText: '重新生成', cancelButtonText: '取消' },
+    )
+  }
+  catch {
+    return
+  }
+  regenerating.value = true
+  try {
+    report.value = await regenerateSummary(sessionId)
+    ElMessage.success('总评已重新生成')
+  }
+  catch (error) {
+    ElMessage.error(error.message)
+  }
+  finally {
+    regenerating.value = false
+  }
+}
 
 const questions = computed(() => report.value?.questions ?? [])
 const categoryScores = computed(() => report.value?.categoryScores ?? [])
@@ -109,15 +137,26 @@ function goAnswer(index) {
               <div class="score-row__summary">
                 <div class="card__head">
                   <h2>总评</h2>
-                  <el-tag type="success" size="small" effect="light">
-                    已完成 · {{ report.answeredCount }} / {{ questions.length }} 题
-                  </el-tag>
+                  <div class="card__head-actions">
+                    <el-tag v-if="report.summarySource === 'DEGRADED'" type="info" size="small" effect="plain">
+                      系统汇总
+                    </el-tag>
+                    <el-tag type="success" size="small" effect="light">
+                      已完成 · {{ report.answeredCount }} / {{ questions.length }} 题
+                    </el-tag>
+                    <el-button size="small" :loading="regenerating" @click="handleRegenerate">
+                      重新生成
+                    </el-button>
+                  </div>
                 </div>
+                <p v-if="report.summarySource === 'DEGRADED'" class="score-row__text score-row__text--muted">
+                  模型生成失败，当前为系统汇总（可点击「重新生成」获取模型版总评）。
+                </p>
                 <p v-if="report.overallSummary" class="score-row__text">
                   {{ report.overallSummary }}
                 </p>
                 <p v-else class="score-row__text score-row__text--muted">
-                  总评暂未生成（生成失败不影响成绩，重答任一题会重新生成）。
+                  总评暂未生成（生成失败不影响成绩，可点击「重新生成」重试）。
                 </p>
                 <div v-if="strengths.length" class="tag-line">
                   <span class="tag-line__label">强项</span>
@@ -269,6 +308,13 @@ function goAnswer(index) {
 </template>
 
 <style scoped>
+/* 总评卡头部右侧：来源徽标 + 状态标签 + 重新生成按钮（M15） */
+.card__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .page-head {
   display: flex;
   align-items: flex-start;

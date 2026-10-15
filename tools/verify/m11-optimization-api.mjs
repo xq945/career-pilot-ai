@@ -48,6 +48,23 @@ async function api(method, path, { token, body, form } = {}) {
   return { status: res.status, body: json }
 }
 
+/**
+ * M16：创建优化已异步化——轮询详情接口直到任务落终态（SUCCESS/FAILED），返回终态详情。
+ * 超时抛异常（脚本失败退出）。
+ */
+async function waitForOptimization(token, id, timeoutMs = 240000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const res = await api('GET', `/optimizations/${id}`, { token })
+    const data = res.body?.data
+    if (data && (data.status === 'SUCCESS' || data.status === 'FAILED')) {
+      return data
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3000))
+  }
+  throw new Error(`优化任务超时未完成：id=${id}`)
+}
+
 // ---------------------------------------------------------------- 测试数据
 
 const SUFFIX = Date.now().toString(36)
@@ -127,22 +144,31 @@ async function main() {
 
   // ------------------------------------------------------------ 组 1：创建优化
 
-  console.log('\n== 组 1：创建优化（匹配解释 + 优化生成，2 次模型调用；通常 25–80 秒） ==')
+  console.log('\n== 组 1：创建优化（M16 异步任务：立即受理，后台执行 2 次模型调用；轮询至终态） ==')
   const create = await api('POST', '/optimizations', { token: userA.token, body: { resumeId, jobId } })
-  const opt = create.body?.data
-  check('创建优化成功（HTTP 200 + code 0）',
+  const created = create.body?.data
+  check('创建请求被受理（HTTP 200 + code 0）',
     create.status === 200 && create.body?.code === 0,
     JSON.stringify(create.body).slice(0, 300))
-  if (!opt) {
+  if (!created) {
+    return
+  }
+  check('M16：创建立即返回 PENDING（模型调用转入后台）', created.status === 'PENDING',
+    `status=${created.status}`)
+
+  const opt = await waitForOptimization(userA.token, created.id)
+  check('后台任务完成（轮询至 SUCCESS）', opt.status === 'SUCCESS',
+    `status=${opt.status} error=${opt.errorMessage}`)
+  if (opt.status !== 'SUCCESS') {
     return
   }
 
   check('返回优化后的简历内容（Markdown，非空）',
     typeof opt.optimizedContent === 'string' && opt.optimizedContent.length > 50,
     `length=${opt.optimizedContent?.length}`)
-  check('未编辑时 editedContent 为 null、版本号为 1、状态 SUCCESS',
-    opt.editedContent === null && opt.versionNo === 1 && opt.status === 'SUCCESS',
-    JSON.stringify({ edited: opt.editedContent, versionNo: opt.versionNo, status: opt.status }))
+  check('未编辑时 editedContent 为 null、版本号为 1',
+    opt.editedContent === null && opt.versionNo === 1,
+    JSON.stringify({ edited: opt.editedContent, versionNo: opt.versionNo }))
   check('未评估时 scoreAfter 为 null（前端显示「待评估」）', opt.scoreAfter === null, String(opt.scoreAfter))
 
   const changeTypes = ['REWRITE', 'KEYWORD', 'REORDER', 'TRIM']

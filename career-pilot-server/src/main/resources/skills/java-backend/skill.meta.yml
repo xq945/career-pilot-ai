@@ -1,0 +1,35 @@
+# Java 后端技能定义（M15）：分类、优先级与参考要点映射
+#
+# priority 语义（题量分配算法的三阶依据，见 InterviewSkillService.calculateAllocation）：
+#   ALWAYS_ONE = 每场保底 1 题（题量允许时）
+#   CORE       = 优先保覆盖；剩余名额在其间轮转
+#   NORMAL     = 次优先，仅在名额富余时保覆盖
+#
+# ref 指向 resources/skills/_shared/references/ 下的参考要点文件（shared: true 时）。
+displayName: Java 后端
+categories:
+  - key: PROJECT
+    label: 项目经历
+    priority: ALWAYS_ONE
+    ref: project-experience.md
+    shared: true
+  - key: JAVA
+    label: Java 基础
+    priority: CORE
+    ref: java-basics.md
+    shared: true
+  - key: SPRING
+    label: Spring 框架
+    priority: CORE
+    ref: spring.md
+    shared: true
+  - key: MYSQL
+    label: MySQL
+    priority: NORMAL
+    ref: mysql.md
+    shared: true
+  - key: REDIS
+    label: Redis
+    priority: NORMAL
+    ref: redis.md
+    shared: true

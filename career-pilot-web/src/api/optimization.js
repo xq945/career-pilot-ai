@@ -10,16 +10,27 @@ import request from './request'
 /**
  * 创建优化（6A.1）：**每次调用创建一条新记录**（同一简历+岗位的 versionNo 递增）。
  *
- * 同步调用，通常耗时 **25–80 秒**（匹配解释 + 优化生成共 2 次模型调用），
- * 前端超时按 300 秒设置（§10.3 的唯一例外）。缺分析或岗位分析已过期 → 400
- * （前端应在弹窗内就地拦截，不依赖后端报错）；模型超时/输出异常 → 502，
- * 本次不产生优化记录、可重试。
+ * **M16 起为异步任务**：校验通过后立即返回 `status = "PENDING"`（模型调用在后台执行），
+ * 前端应立即跳转详情页轮询进度（见 `OptimizationDetailView`）。仅两条降级路径
+ * （异步开关关闭 / 入队失败）会在本请求内同步执行（25–80 秒），故超时仍按 AI 口径
+ * 设 120 秒（300 秒的唯一例外已随异步化取消，§10.3）。
+ *
+ * 缺分析或岗位分析已过期 → 400（前端应在弹窗内就地拦截，不依赖后端报错）；
+ * 任务失败 → 记录落 `FAILED`（含可读原因），在详情页手动重试（6A.7）。
  *
  * 手动输入 JD 的场景由页面编排：先 POST /api/jobs 与 POST /api/jobs/{id}/analyze
  * 建岗位并分析，再调用本接口（每步独立超时、进度可见）。
  */
 export function createOptimization({ resumeId, jobId }) {
-  return request.post('/optimizations', { resumeId, jobId }, { timeout: 300000 })
+  return request.post('/optimizations', { resumeId, jobId }, { timeout: 120000 })
+}
+
+/**
+ * 手动重试失败的任务（6A.7，M16）：仅 `FAILED` 可重试；重置为 PENDING 后重新入队；
+ * 返回与详情接口一致的结构（入队失败时降级为同步执行，耗时同创建）。
+ */
+export function retryOptimization(id) {
+  return request.post(`/optimizations/${id}/retry`, null, { timeout: 120000 })
 }
 
 /** 优化记录列表（6A.2）：created_at 倒序分页；内联资源名称与优化前后分数 */

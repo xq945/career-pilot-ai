@@ -77,3 +77,13 @@ export function submitAnswer(sessionId, questionId, answer) {
 export function getInterviewReport(id) {
   return request.get(`/interviews/${id}/report`)
 }
+
+/**
+ * 重新生成总评（§7.5，M15）：仅已完成会话可调用；使用**创建会话时钉住的模型服务**，
+ * 成功覆盖总评并标注来源 AI，**失败（502）时原总评保持不变**；返回完整报告。
+ *
+ * 同步调用通常 10–30 秒，超时按 AI 口径 120 秒。
+ */
+export function regenerateSummary(id) {
+  return request.post(`/interviews/${id}/summary/regenerate`, null, { timeout: 120000 })
+}

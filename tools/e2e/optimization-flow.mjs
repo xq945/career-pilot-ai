@@ -260,19 +260,23 @@ try {
   await shot('02-dialog-ready')
 
   await clickDialogButton('开始优化')
-  await page.waitFor(`document.body.innerText.includes('AI 正在生成优化稿')`,
-    { label: '等待态文案', timeout: 15000 })
-  check('③ 提交后弹窗内呈现等待态（说明耗时与中途关闭不影响）',
-    (await page.textOf('.el-dialog')).includes('中途关闭页面不会影响结果'))
-
+  // M16：创建接口异步化——提交后**立即跳转工作台**，任务在后台执行（详情页展示进度并每 3 秒轮询）
   await page.waitFor(`/^\\/optimizations\\/\\d+$/.test(location.pathname)`,
-    { label: '优化完成后跳转工作台', timeout: AI_TIMEOUT })
+    { label: '提交后跳转工作台', timeout: 30000 })
   const optimizationId = Number((await page.evaluate('location.pathname')).split('/').pop())
-  check('③ 创建成功并跳转工作台', Number.isInteger(optimizationId) && optimizationId > 0)
+  check('③ 提交后立即跳转工作台（异步任务已受理）', Number.isInteger(optimizationId) && optimizationId > 0)
 
+  // 工作台先呈现「生成中」任务卡或已完成内容（首屏有一次详情加载，需等待渲染）
+  await page.waitFor(
+    `!!document.querySelector('.task-card') || !!document.querySelector('.score-row')`,
+    { label: '工作台任务态或内容渲染', timeout: 30000 })
+  check('③ 工作台出现任务进度卡或已完成内容', true)
+  await shot('02b-task-running')
+
+  await page.waitFor(`!!document.querySelector('.score-row')`, { label: '任务完成并渲染工作台', timeout: AI_TIMEOUT })
   const detail = (await api('GET', `/optimizations/${optimizationId}`, { token: TOKEN })).body?.data
   check('③ 后端记录与页面同步（版本 1、未评估、有优化稿）',
-    detail?.versionNo === 1 && detail?.scoreAfter === null
+    detail?.status === 'SUCCESS' && detail?.versionNo === 1 && detail?.scoreAfter === null
     && typeof detail?.optimizedContent === 'string' && detail.optimizedContent.length > 50)
 
   /* ============================================================== ④ 工作台区块 */
@@ -508,7 +512,9 @@ try {
     stepText.includes('岗位') && stepText.includes('分析'), stepText.slice(0, 120))
 
   await page.waitFor(`/^\\/optimizations\\/\\d+$/.test(location.pathname)`,
-    { label: '手动 JD 路径完成并跳转', timeout: AI_TIMEOUT })
+    { label: '手动 JD 路径提交并跳转', timeout: AI_TIMEOUT })
+  // M16：任务后台执行——等待详情页轮询到完成再断言产物
+  await page.waitFor(`!!document.querySelector('.score-row')`, { label: '手动 JD 任务完成', timeout: AI_TIMEOUT })
   const manualId = Number((await page.evaluate('location.pathname')).split('/').pop())
   const manualDetail = (await api('GET', `/optimizations/${manualId}`, { token: TOKEN })).body?.data
   check('⑨ 手动输入 JD 的优化完成（岗位自动创建并分析后产出优化稿）',

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Edit } from '@element-plus/icons-vue'
 
+import { listLlmProviders } from '@/api/llmProvider'
 import { useUserStore } from '@/stores/user'
 
 /**
@@ -147,8 +148,34 @@ let clockTimer
 onMounted(() => {
   // 每分钟刷新「已使用时长」（Token 有效期以小时计，无需更细粒度）
   clockTimer = setInterval(() => { now.value = Date.now() }, 60000)
+  loadProviderSummary()
 })
 onUnmounted(() => clearInterval(clockTimer))
+
+/* ---------- 模型服务入口摘要（M14，§5.14）：加载失败不阻塞页面 ---------- */
+const providerSummary = ref({
+  name: '平台默认 · deepseek-flash',
+  hint: '全部 AI 功能使用平台内置模型',
+})
+
+async function loadProviderSummary() {
+  try {
+    const providers = await listLlmProviders()
+    const current = providers.find((item) => item.isDefault)
+    if (!current) {
+      return
+    }
+    providerSummary.value = {
+      name: `${current.displayName} · ${current.model}`,
+      hint: current.maskedApiKey
+        ? '当前默认模型服务，全部 AI 功能使用该服务'
+        : '当前默认服务尚未配置 API Key，调用将回退平台默认',
+    }
+  }
+  catch {
+    // 摘要加载失败保留默认文案（不打扰用户，管理页有完整错误态）
+  }
+}
 
 const loginAtText = computed(() => {
   if (!loginAt.value) {
@@ -270,6 +297,22 @@ async function handleLogout() {
         </el-button>
         <el-button type="primary" :loading="saving" @click="handleSave">
           保存修改
+        </el-button>
+      </div>
+    </el-card>
+
+    <!-- 模型服务（M14，§5.14）：当前默认摘要 + 管理入口 -->
+    <el-card shadow="never" class="card">
+      <template #header>
+        <h2>模型服务</h2>
+      </template>
+      <div class="session-row">
+        <div>
+          <div class="session-row__strong">{{ providerSummary.name }}</div>
+          <div class="session-row__hint">{{ providerSummary.hint }}</div>
+        </div>
+        <el-button @click="router.push({ name: 'profile-providers' })">
+          管理
         </el-button>
       </div>
     </el-card>

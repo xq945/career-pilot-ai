@@ -26,6 +26,15 @@ spring:
       api-key: 请填写 DeepSeek API Key
 
 app:
+  llm:
+    # 用户级模型服务 API Key 的加密主密钥（M14，《系统架构设计》§7.4）。
+    #
+    # 缺省时启动打印 WARN 并降级为开发用 fallback 密钥——仅限本地开发；
+    # 演示与部署必须显式配置（更换本项会使已加密的 API Key 全部不可解密，
+    # 现象是模型服务列表掩码显示为 *** 且调用报"API Key 解密失败"）。
+    # 生成方式：openssl rand -base64 32
+    encryption-key: 请填写随机密钥
+
   jwt:
     # JWT 签名密钥，HS256 要求不少于 32 字节（256 bit）。
     # 生成方式：openssl rand -base64 48

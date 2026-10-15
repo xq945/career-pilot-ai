@@ -35,6 +35,9 @@ public class Job {
     /** 岗位职责与任职要求的完整文本（粘贴 JD 原文，≤ 10000 字符） */
     private String description;
 
+    /** 投递网页链接（M19 新增，选填；http/https，≤ 500 字符，由用户填写） */
+    private String applyUrl;
+
     /** 1 有效，0 已删除 */
     private Integer status;
 
@@ -80,6 +83,14 @@ public class Job {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getApplyUrl() {
+        return applyUrl;
+    }
+
+    public void setApplyUrl(String applyUrl) {
+        this.applyUrl = applyUrl;
     }
 
     public Integer getStatus() {

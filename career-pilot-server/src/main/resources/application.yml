@@ -97,6 +97,21 @@ app:
     # Token 有效期，单位秒，缺省 2 小时（《API接口设计》2 节）
     # 签名密钥 app.jwt.secret 存放在 application-local.yml
     expiration-seconds: 7200
+  captcha:
+    # 登录图形验证码（M18，《API接口设计》§3.3）。
+    # enabled=false 时登录跳过验证码校验——tools/ 下的 30 个脚本（verify 与 e2e）都以
+    # /auth/login 取 Token 且看不到图片内容，回归它们时以 APP_CAPTCHA_ENABLED=false 启动。
+    enabled: ${APP_CAPTCHA_ENABLED:true}
+    # 【仅自动化测试用】非空时所有验证码图片都绘制该固定文本，让脚本能填对答案。
+    # 生产必须留空，否则验证码形同虚设（它只改变"画什么字"，校验仍逐字比对、逻辑不变）。
+    fixed-text: ${APP_CAPTCHA_FIXED_TEXT:}
+    # 有效期（秒）：超期即失效，校验一律返回 40002
+    # 验证「过期」路径时用 APP_CAPTCHA_EXPIRE_SECONDS=2 启动（tools/verify/m18-captcha-api.mjs 依赖它）
+    expire-seconds: ${APP_CAPTCHA_EXPIRE_SECONDS:300}
+    # 本地缓存容量上限（条）：超限先清过期项，仍超限则淘汰最早过期的一条
+    max-size: 10000
+    # 过期项清理任务的 cron（默认每 5 分钟；cron 简写不可写进 JavaDoc 块注释）
+    cleanup-cron: ${APP_CAPTCHA_CLEANUP_CRON:0 */5 * * * *}
   agent:
     # 单次对话总时长预算（《API接口设计》§8.1：总时长不超过 120 秒）。
     # 落地方式为「回合边界的协作式终止」：每个工具执行前检查截止时间，超时则拒绝执行、
@@ -112,6 +127,40 @@ app:
     history-char-limit: 6000
     # 注入提示词的资源清单条数上限（只给 ID/名称/分析状态，不给正文）
     catalog-limit: 20
+  ai:
+    # 结构化输出的总尝试次数（M14）：1 = 不重试；2 = 首次解析失败后追加修复指令重试一次。
+    # 只对"输出无法解析"（50201 路径）生效；超时/网络类失败（50200）不重试。
+    # 解析失败时另有本地修复（未转义引号）先于重试执行，且不计入尝试次数。
+    structured-max-attempts: 2
+  llm:
+    # 用户级模型服务（《API接口设计》§3A，M14）：
+    # API Key 的加密主密钥（AES-GCM）。缺省时启动打印 WARN 并降级为开发 fallback——
+    # 仅限本地开发；演示与部署必须在 application-local.yml / 环境变量中显式配置。
+    encryption-key: ${APP_LLM_ENCRYPTION_KEY:}
+    # 用户级服务构建 OpenAI 兼容客户端时的超时；与 spring.http.clients 的平台默认对齐，
+    # 保证"切换服务"不改变整体超时语义。
+    connect-timeout: 10s
+    read-timeout: 60s
+  schedule:
+    # 面试日程的过期流转 cron（M17，默认每小时整点）：
+    # PENDING 且面试时间已过 → EXPIRED（仅系统写入，《数据库设计》5.16）。
+    # 验证脚本可用 --app.schedule.expiry-cron="*/10 * * * * *" 加速。
+    expiry-cron: ${APP_SCHEDULE_EXPIRY_CRON:0 0 * * * *}
+  optimization:
+    async:
+      # 「创建优化」异步链路（M16）：Redis Stream 任务队列 + 卡住任务恢复
+      # （《系统架构设计》§6.5）。enabled=false 时走同步执行（与 M11 行为一致）——
+      # 无 Redis 环境的回退开关；入队失败时也自动降级为同步执行（§6A.1）。
+      # 仅开启时 Redis 才是**启动前置依赖**（连接失败即启动失败，避免任务永不执行的隐性故障）。
+      enabled: ${APP_OPTIMIZATION_ASYNC_ENABLED:true}
+      redis-address: ${APP_OPTIMIZATION_ASYNC_REDIS_ADDRESS:redis://localhost:6379}
+      redis-database: ${APP_OPTIMIZATION_ASYNC_REDIS_DATABASE:0}
+      # PENDING 超时（投递丢失判定）——必须大于正常排队时间（消费者单线程）
+      pending-timeout: 30s
+      # PROCESSING 超时（消费者死亡判定）——必须大于 pending-timeout（启动即校验）
+      processing-timeout: 10m
+      # 恢复调度扫描间隔
+      scan-interval: 60s
   match:
     # 匹配评分规则（《数据库设计》6.1「权重入配置」）：
     # 调整权重或算法时必须手工递增 rule-version，随报告写入 dimension_scores.ruleVersion；

@@ -8,8 +8,9 @@ import java.time.LocalDateTime;
  * <p>资源名称由关联查询得到，**不得附加 {@code status = 1} 过滤**：
  * 源资源逻辑删除后名称仍要正常显示（同 §6.2 的匹配列表口径）。
  *
- * <p>{@code scoreAfter} 用包装类型 {@link Double}：未评估时为 null，
- * 前端据此显示「待评估」而不是 0 分。
+ * <p>两个分数字段均用包装类型 {@link Double}：`scoreAfter` 未评估时为 null；
+ * `matchScore` 在任务未完成（M16 异步化后的 PENDING/PROCESSING/FAILED）时为 null——
+ * 前端按状态标签渲染，显示「待评估」而不是 0 分。
  */
 public class ResumeOptimizationView {
 
@@ -27,8 +28,8 @@ public class ResumeOptimizationView {
 
     private Integer versionNo;
 
-    /** 优化前匹配总分（由规则计算，来自优化前那条 match_record） */
-    private double matchScore;
+    /** 优化前匹配总分（由规则计算，来自优化前那条 match_record）；M16 起为包装类型：任务未完成时为 null */
+    private Double matchScore;
 
     /** 优化后匹配总分；null 表示尚未评估 */
     private Double scoreAfter;
@@ -95,11 +96,11 @@ public class ResumeOptimizationView {
         this.versionNo = versionNo;
     }
 
-    public double getMatchScore() {
+    public Double getMatchScore() {
         return matchScore;
     }
 
-    public void setMatchScore(double matchScore) {
+    public void setMatchScore(Double matchScore) {
         this.matchScore = matchScore;
     }
 

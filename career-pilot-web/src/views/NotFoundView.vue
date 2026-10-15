@@ -12,7 +12,7 @@ const userStore = useUserStore()
     <el-result icon="warning" title="404" sub-title="页面不存在或已被移除">
       <template #extra>
         <el-button type="primary" @click="$router.replace(userStore.isLoggedIn ? '/dashboard' : '/login')">
-          {{ userStore.isLoggedIn ? '返回仪表盘' : '去登录' }}
+          {{ userStore.isLoggedIn ? '返回工作台' : '去登录' }}
         </el-button>
       </template>
     </el-result>

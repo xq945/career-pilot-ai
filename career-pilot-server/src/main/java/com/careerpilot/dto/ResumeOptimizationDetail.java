@@ -87,6 +87,12 @@ public class ResumeOptimizationDetail {
 
     private String status;
 
+    /** M16：任务阶段（MATCHING/GENERATING；仅 PROCESSING 有值，供详情页轮询进度展示） */
+    private String stage;
+
+    /** M16：失败原因（用户可读；仅 FAILED 有值） */
+    private String errorMessage;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -305,6 +311,22 @@ public class ResumeOptimizationDetail {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getStage() {
+        return stage;
+    }
+
+    public void setStage(String stage) {
+        this.stage = stage;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
     }
 
     public LocalDateTime getCreatedAt() {

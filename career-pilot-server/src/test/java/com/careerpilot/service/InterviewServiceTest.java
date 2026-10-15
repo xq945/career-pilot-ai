@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -53,6 +54,7 @@ import com.careerpilot.mapper.MatchRecordMapper;
 import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.ai.InterviewAiService;
+import com.careerpilot.service.ai.InterviewSummaryFallback;
 
 /**
  * 面试编排的护栏（《API接口设计》§7）：
@@ -71,6 +73,8 @@ class InterviewServiceTest {
     private InterviewAiService aiService;
 
     private InterviewTxService txService;
+
+    private InterviewSummaryFallback summaryFallback;
 
     private ResumeService resumeService;
 
@@ -92,6 +96,7 @@ class InterviewServiceTest {
         jobService = mock(JobService.class);
         aiService = mock(InterviewAiService.class);
         txService = mock(InterviewTxService.class);
+        summaryFallback = mock(InterviewSummaryFallback.class);
         resumeService = mock(ResumeService.class);
         resumeOptimizationService = mock(ResumeOptimizationService.class);
         matchRecordMapper = mock(MatchRecordMapper.class);
@@ -99,8 +104,11 @@ class InterviewServiceTest {
         resumeOptimizationMapper = mock(ResumeOptimizationMapper.class);
         service = new InterviewService(sessionMapper, questionMapper, jobMapper,
                 mock(JobAnalysisMapper.class), jobService, aiService, txService,
+                summaryFallback,
                 resumeService, resumeOptimizationService, matchRecordMapper,
                 resumeMapper, resumeOptimizationMapper);
+        // M15：历史题去重查询的宽松桩（不走创建路径的用例不受影响）
+        lenient().when(sessionMapper.selectList(any())).thenReturn(List.of());
     }
 
     // ---------------------------------------------------------------- 创建（§7.1）
@@ -119,7 +127,7 @@ class InterviewServiceTest {
     @Test
     void create_modelFailure_502AndNothingSaved() {
         when(jobService.getOwnedJob(eq(1L), eq(9L))).thenReturn(job());
-        when(aiService.generate(any(), any(), eq("MIXED"), eq(3), isNull(), isNull()))
+        when(aiService.generate(any(), any(), eq("MIXED"), eq(3), isNull(), isNull(), anyList()))
                 .thenThrow(BusinessException.aiUnavailable("大模型服务暂时不可用"));
 
         assertThrows(BusinessException.class, () -> service.create(1L, createRequest(9L, 3)));
@@ -131,7 +139,7 @@ class InterviewServiceTest {
     @Test
     void create_success_assemblesCountsAndQuestions() {
         when(jobService.getOwnedJob(eq(1L), eq(9L))).thenReturn(job());
-        when(aiService.generate(any(), any(), eq("MIXED"), eq(3), isNull(), isNull()))
+        when(aiService.generate(any(), any(), eq("MIXED"), eq(3), isNull(), isNull(), anyList()))
                 .thenReturn(new AiCallResult<>(questionsOutput(2), "test-model", 100L, 1, 1, 2));
         when(txService.saveNewSession(any(), anyList())).thenAnswer(invocation -> {
             InterviewSession session = invocation.getArgument(0);
@@ -172,7 +180,7 @@ class InterviewServiceTest {
         ArgumentCaptor<String> resumeText = ArgumentCaptor.forClass(String.class);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<MatchItem>> gaps = ArgumentCaptor.forClass(List.class);
-        verify(aiService).generate(any(), any(), eq("MIXED"), eq(3), resumeText.capture(), gaps.capture());
+        verify(aiService).generate(any(), any(), eq("MIXED"), eq(3), resumeText.capture(), gaps.capture(), anyList());
         assertEquals("优化后的简历内容", resumeText.getValue());
         assertEquals(2, gaps.getValue().size(), "missing 在前、partial 在后，各取前 5");
         assertEquals("简历未体现 Redis 使用经验", gaps.getValue().get(0).getText());
@@ -238,7 +246,7 @@ class InterviewServiceTest {
         assertNull(sessionCaptor.getValue().getOptimizationId());
 
         verify(aiService).generate(any(), any(), eq("MIXED"), eq(3),
-                eq("简历正文：熟悉 Java 与 Spring"), any());
+                eq("简历正文：熟悉 Java 与 Spring"), any(), anyList());
     }
 
     @Test
@@ -248,14 +256,14 @@ class InterviewServiceTest {
 
         service.create(1L, createRequest(9L, 3));
 
-        verify(aiService).generate(any(), any(), eq("MIXED"), eq(3), isNull(), isNull());
+        verify(aiService).generate(any(), any(), eq("MIXED"), eq(3), isNull(), isNull(), anyList());
         // 无来源时不查任何上下文资源（与历史行为等价）
         verifyNoInteractions(resumeService, resumeOptimizationService, matchRecordMapper);
     }
 
     /** 出题成功 + 会话落库的最小桩（M12 创建测试共用） */
     private void stubGenerateSuccess() {
-        when(aiService.generate(any(), any(), eq("MIXED"), eq(3), any(), any()))
+        when(aiService.generate(any(), any(), eq("MIXED"), eq(3), any(), any(), anyList()))
                 .thenReturn(new AiCallResult<>(questionsOutput(1), "test-model", 100L, 1, 1, 2));
         when(txService.saveNewSession(any(), anyList())).thenAnswer(invocation -> {
             InterviewSession session = invocation.getArgument(0);
@@ -343,7 +351,8 @@ class InterviewServiceTest {
 
         service.submitAnswer(1L, 10L, 100L, "我的回答");
 
-        verify(txService).saveSummary(eq(10L), eq(summary));
+        verify(txService).saveSummary(eq(10L), eq(summary),
+                eq(InterviewTxService.SUMMARY_SOURCE_AI));
     }
 
     @Test
@@ -355,11 +364,16 @@ class InterviewServiceTest {
                 .thenReturn(new InterviewTxService.AnswerOutcome(true, new BigDecimal("85.00"), List.of()));
         when(aiService.summarize(any(), any(), anyList(), any()))
                 .thenThrow(BusinessException.aiUnavailable("大模型服务暂时不可用"));
+        // M15：失败时写入确定性降级总评（DEGRADED）——"降级"可见，不再静默缺失
+        InterviewSummaryAiOutput degraded = new InterviewSummaryAiOutput();
+        degraded.setSummary("本次总评由系统汇总生成（测试）");
+        when(summaryFallback.build(anyList(), any())).thenReturn(degraded);
 
         AnswerEvaluationResponse response = service.submitAnswer(1L, 10L, 100L, "我的回答");
 
         assertNotNull(response, "总评生成失败不得使整个提交失败（回答/评价/总分已落库）");
-        verify(txService, never()).saveSummary(any(), any());
+        verify(txService).saveSummary(eq(10L), eq(degraded),
+                eq(InterviewTxService.SUMMARY_SOURCE_DEGRADED));
     }
 
     // ---------------------------------------------------------------- 报告（§7.4）
@@ -503,6 +517,8 @@ class InterviewServiceTest {
         optimization.setMatchRecordId(matchRecordId);
         optimization.setOptimizedContent("模型原稿内容");
         optimization.setEditedContent("优化后的简历内容");
+        // M16：面试来源校验要求优化已成功完成（异步化后存在 PENDING/PROCESSING/FAILED 态）
+        optimization.setStatus(ResumeOptimization.STATUS_SUCCESS);
         return optimization;
     }
 

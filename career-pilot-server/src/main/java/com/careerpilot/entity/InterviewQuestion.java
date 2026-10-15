@@ -37,6 +37,9 @@ public class InterviewQuestion {
     /** 题目类别（六枚举之一）；模型未给出或越界时为 null（可空，见 §7.3） */
     private String questionCategory;
 
+    /** M15：出题时生成的知识点摘要（跨会话历史去重与展示；历史数据为 null 时回退题干前 30 字） */
+    private String topicSummary;
+
     /** 用户回答，未作答为 null */
     private String answer;
 
@@ -89,6 +92,14 @@ public class InterviewQuestion {
 
     public void setQuestionCategory(String questionCategory) {
         this.questionCategory = questionCategory;
+    }
+
+    public String getTopicSummary() {
+        return topicSummary;
+    }
+
+    public void setTopicSummary(String topicSummary) {
+        this.topicSummary = topicSummary;
     }
 
     public String getAnswer() {

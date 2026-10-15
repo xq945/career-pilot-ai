@@ -10,12 +10,14 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.careerpilot.ai.AiCallResult;
 import com.careerpilot.common.BusinessException;
 import com.careerpilot.common.PageQuery;
 import com.careerpilot.common.PageResult;
@@ -42,6 +44,9 @@ import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.ai.ResumeAiService;
 import com.careerpilot.service.ai.ResumeOptimizationAiService;
+import com.careerpilot.service.optimization.OptimizationStreamProducer;
+import com.careerpilot.service.optimization.OptimizationTaskRunner;
+import com.careerpilot.service.optimization.OptimizationTaskStateService;
 
 /**
  * 简历定向优化服务（《API接口设计》§6A、《系统架构设计》§6.4）。
@@ -100,6 +105,15 @@ public class ResumeOptimizationService {
 
     private final ResumeAiService resumeAiService;
 
+    /** M16：任务执行体（同步降级与异步消费者共用） */
+    private final OptimizationTaskRunner taskRunner;
+
+    /** M16：任务状态机写路径 */
+    private final OptimizationTaskStateService stateService;
+
+    /** M16：任务生产者（异步开关关闭时为空——用 ObjectProvider 避免强制依赖） */
+    private final ObjectProvider<OptimizationStreamProducer> streamProducerProvider;
+
     public ResumeOptimizationService(ResumeOptimizationMapper optimizationMapper,
                                      MatchRecordMapper matchRecordMapper, ResumeMapper resumeMapper,
                                      JobMapper jobMapper, ResumeAnalysisMapper resumeAnalysisMapper,
@@ -109,7 +123,10 @@ public class ResumeOptimizationService {
                                      JobAnalysisService jobAnalysisService,
                                      MatchService matchService, MatchScoringService matchScoringService,
                                      ResumeOptimizationAiService resumeOptimizationAiService,
-                                     ResumeAiService resumeAiService) {
+                                     ResumeAiService resumeAiService,
+                                     OptimizationTaskRunner taskRunner,
+                                     OptimizationTaskStateService stateService,
+                                     ObjectProvider<OptimizationStreamProducer> streamProducerProvider) {
         this.optimizationMapper = optimizationMapper;
         this.matchRecordMapper = matchRecordMapper;
         this.resumeMapper = resumeMapper;
@@ -124,12 +141,25 @@ public class ResumeOptimizationService {
         this.matchScoringService = matchScoringService;
         this.resumeOptimizationAiService = resumeOptimizationAiService;
         this.resumeAiService = resumeAiService;
+        this.taskRunner = taskRunner;
+        this.stateService = stateService;
+        this.streamProducerProvider = streamProducerProvider;
     }
 
     // ---------------------------------------------------------------- 创建（6A.1）
 
     /**
-     * 创建优化：缺分析或岗位分析过期 → 400（不自动补齐）；模型失败 → 502 系列且不落优化记录。
+     * 创建优化（M16 起为**异步任务**，§6A.1）：缺分析或岗位分析过期 → 400（不自动补齐，校验保持同步）；
+     * 校验通过后立即落 PENDING 任务行并入队，**模型调用（匹配解释 + 优化生成，共 2 次）在后台执行**，
+     * 接口立刻返回（前端跳详情页轮询进度）。
+     *
+     * <p>两条降级路径（都走**同步执行**，与 M11 行为一致）：
+     * <ul>
+     *   <li>{@code app.optimization.async.enabled=false}（无 Redis 环境的回退开关）；</li>
+     *   <li>入队失败（Redis 抖动等）——不把任务静默丢失，在本次请求内执行完。</li>
+     *   <li><b>语义变更</b>：同步路径失败时**会留下 FAILED 记录**（PENDING 行已先落库），
+     *       与 M11 的"失败不落库"不同——失败可见、可手动重试（§6A.7）。</li>
+     * </ul>
      *
      * 每次调用创建一条新记录（同一简历+岗位的 versionNo 递增，保留历史）。
      */
@@ -149,36 +179,78 @@ public class ResumeOptimizationService {
             throw BusinessException.badRequest("岗位描述已更新，请先重新分析岗位");
         }
 
-        // 1) 匹配：复用 M6 全链路（规则评分 + 模型解释 + 落 match_record），结果作为"优化前评估"
-        MatchDetail match = matchService.create(resume, job, resumeAnalysis, jobAnalysis);
-
-        // 2) 优化生成：证据账本由纯函数评分服务重算得到（与 match_record 落库的分数同源同值，
-        //    不在 M6 代码上开口子暴露中间产物；评分是纯函数、零模型成本）
-        MatchScoringResult scoring = matchScoringService.score(jobAnalysis, resumeAnalysis);
-        ResumeOptimizationAiOutput generated =
-                resumeOptimizationAiService.generate(resume, jobAnalysis, resumeAnalysis, scoring).value();
-
-        // 3) 落库（模型调用已全部完成，此后才产生写入）
+        // M16：先落 PENDING 任务行（模型调用移到后台任务；执行期会复核分析有效性，
+        // 见 OptimizationTaskRunner——入队到执行之间岗位描述可能被改动）
         ResumeOptimization record = new ResumeOptimization();
-        record.setUserId(resume.getUserId());
+        record.setUserId(userId);
         record.setResumeId(resume.getId());
         record.setJobId(job.getId());
-        record.setMatchRecordId(match.getId());
-        record.setOptimizedContent(generated.getOptimizedContent());
-        record.setChanges(generated.getChanges());
-        record.setGapQuestions(generated.getGapQuestions());
-        record.setModelName("deepseek-flash");
-        record.setStatus(ResumeOptimization.STATUS_SUCCESS);
+        record.setStatus(ResumeOptimization.STATUS_PENDING);
         LocalDateTime now = LocalDateTime.now().withNano(0);
         record.setCreatedAt(now);
         record.setUpdatedAt(now);
         insertWithVersionRetry(record);
 
-        log.info("优化记录已落库：optimizationId={} resumeId={} jobId={} matchId={} versionNo={}",
-                record.getId(), record.getResumeId(), record.getJobId(),
-                record.getMatchRecordId(), record.getVersionNo());
+        log.info("优化任务已创建：optimizationId={} resumeId={} jobId={} versionNo={}",
+                record.getId(), record.getResumeId(), record.getJobId(), record.getVersionNo());
 
-        return toDetail(record);
+        if (!enqueueTask(userId, record.getId())) {
+            runSynchronously(record.getId());
+        }
+        return toDetail(optimizationMapper.selectById(record.getId()));
+    }
+
+    // ---------------------------------------------------------------- 任务编排（M16）
+
+    /** 入队；返回 false = 未启用异步或入队失败（调用方降级为同步执行） */
+    private boolean enqueueTask(Long userId, Long optimizationId) {
+        OptimizationStreamProducer producer = streamProducerProvider.getIfAvailable();
+        if (producer == null) {
+            log.info("异步链路未启用（app.optimization.async.enabled=false），本次同步执行：optimizationId={}",
+                    optimizationId);
+            return false;
+        }
+        return producer.send(new OptimizationStreamProducer.OptimizationTask(optimizationId, userId));
+    }
+
+    /**
+     * 同步执行（降级路径与 enabled=false 共用）：条件领取 → 执行 → 失败落 FAILED 后异常上抛。
+     * 领取失败（理论不可达：行刚插入且处于 PENDING）按内部错误处理。
+     */
+    private void runSynchronously(Long optimizationId) {
+        String attemptId = stateService.markProcessing(optimizationId);
+        if (attemptId == null) {
+            throw BusinessException.internalError("任务状态异常，请稍后重试");
+        }
+        try {
+            taskRunner.run(optimizationId, attemptId);
+        }
+        catch (RuntimeException ex) {
+            stateService.fail(optimizationId, attemptId,
+                    ex.getMessage() == null ? "任务执行失败" : ex.getMessage());
+            throw ex;
+        }
+    }
+
+    // ---------------------------------------------------------------- 手动重试（6A.7）
+
+    /**
+     * 手动重试失败的任务（§6A.7，M16）：仅 FAILED 可重试；重置为 PENDING 后重新入队
+     * （入队失败同样降级为同步执行）。
+     */
+    public ResumeOptimizationDetail retry(Long userId, Long id) {
+        ResumeOptimization record = getOwned(userId, id);
+        if (!ResumeOptimization.STATUS_FAILED.equals(record.getStatus())) {
+            throw BusinessException.badRequest("仅失败的任务可以重试（当前状态：" + record.getStatus() + "）");
+        }
+        if (!stateService.resetForRetry(id)) {
+            throw BusinessException.badRequest("任务状态已变化，请刷新后重试");
+        }
+        log.info("优化任务手动重试：optimizationId={}", id);
+        if (!enqueueTask(userId, id)) {
+            runSynchronously(id);
+        }
+        return toDetail(optimizationMapper.selectById(id));
     }
 
     /**
@@ -247,6 +319,7 @@ public class ResumeOptimizationService {
      */
     public ResumeOptimizationDetail saveContent(Long userId, Long id, String content) {
         ResumeOptimization record = getOwned(userId, id);
+        requireSuccess(record, "编辑");
         String normalized = content.strip();
         String current = currentContent(record);
         if (normalized.equals(current)) {
@@ -286,6 +359,7 @@ public class ResumeOptimizationService {
      */
     public ResumeOptimizationDetail evaluate(Long userId, Long id) {
         ResumeOptimization record = getOwned(userId, id);
+        requireSuccess(record, "评估");
         String content = currentContent(record);
 
         // 与优化前同源的岗位分析（外键 RESTRICT 保证存在）
@@ -320,6 +394,7 @@ public class ResumeOptimizationService {
      */
     public OptimizedResumeFile readExport(Long userId, Long id) {
         ResumeOptimization record = getOwned(userId, id);
+        requireSuccess(record, "导出");
         Resume resume = resumeMapper.selectById(record.getResumeId());
         Job job = jobMapper.selectById(record.getJobId());
         String fileName = safeFileName((resume == null ? "简历" : resume.getName())
@@ -387,7 +462,11 @@ public class ResumeOptimizationService {
 
     /** 当页匹配记录（取优化前分数） */
     private Map<Long, MatchRecord> matchesByIds(List<ResumeOptimization> records) {
-        List<Long> ids = records.stream().map(ResumeOptimization::getMatchRecordId).distinct().toList();
+        // M16：任务未完成的行 match_record_id 为 null——过滤后再批量查询（否则 IN (null) 无匹配、装配 NPE）
+        List<Long> ids = records.stream()
+                .map(ResumeOptimization::getMatchRecordId)
+                .filter(id -> id != null)
+                .distinct().toList();
         if (ids.isEmpty()) {
             return Map.of();
         }
@@ -400,23 +479,47 @@ public class ResumeOptimizationService {
         return matches;
     }
 
-    /** 装配详情：优化数据的每一项都从**落库的快照**读取（不重新调用模型） */
+    /**
+     * 装配详情：优化数据的每一项都从**落库的快照**读取（不重新调用模型）。
+     *
+     * <p>M16：任务未完成时 {@code match_record_id} 为 null（匹配尚未发生）——此时只装配
+     * 来源与任务控制字段（状态 / 阶段 / 失败原因），分数、内容、差距等**产物字段保持为空**
+     * （前端按状态渲染进度或失败态）。
+     */
     private ResumeOptimizationDetail toDetail(ResumeOptimization record) {
-        // 外键均为 ON DELETE RESTRICT 且源资源只做逻辑删除——这些行必然存在
-        MatchRecord matchRecord = matchRecordMapper.selectById(record.getMatchRecordId());
-        JobAnalysis jobAnalysis = jobAnalysisMapper.selectById(matchRecord.getJobAnalysisId());
-        ResumeAnalysis resumeAnalysis = resumeAnalysisMapper.selectById(matchRecord.getResumeAnalysisId());
         Resume resume = resumeMapper.selectById(record.getResumeId());
         Job job = jobMapper.selectById(record.getJobId());
+        if (resume == null || job == null) {
+            // 外键 RESTRICT + 逻辑删除保证两行存在；此分支仅为防御
+            throw BusinessException.internalError("优化记录的来源资源缺失");
+        }
 
         ResumeOptimizationDetail detail = new ResumeOptimizationDetail();
         detail.setId(record.getId());
         detail.setResumeId(record.getResumeId());
         detail.setResumeName(resume.getName());
-        detail.setResumeVersionNo(resumeAnalysis.getVersionNo());
         detail.setJobId(record.getJobId());
         detail.setJobName(job.getJobName());
         detail.setCompanyName(job.getCompanyName());
+        detail.setVersionNo(record.getVersionNo());
+        detail.setModelName(record.getModelName());
+        detail.setStatus(record.getStatus());
+        // M16：任务控制字段（详情页轮询进度 / 失败文案与重试入口）
+        detail.setStage(record.getStage());
+        detail.setErrorMessage(record.getErrorMessage());
+        detail.setCreatedAt(record.getCreatedAt());
+        detail.setUpdatedAt(record.getUpdatedAt());
+
+        // M16：任务未完成（PENDING/PROCESSING/FAILED）——匹配与优化产物尚未产生
+        if (record.getMatchRecordId() == null) {
+            return detail;
+        }
+
+        // 以下装配同既有实现（外键 RESTRICT 保证引用的分析行存在）
+        MatchRecord matchRecord = matchRecordMapper.selectById(record.getMatchRecordId());
+        JobAnalysis jobAnalysis = jobAnalysisMapper.selectById(matchRecord.getJobAnalysisId());
+        ResumeAnalysis resumeAnalysis = resumeAnalysisMapper.selectById(matchRecord.getResumeAnalysisId());
+        detail.setResumeVersionNo(resumeAnalysis.getVersionNo());
         detail.setJobVersionNo(jobAnalysis.getVersionNo());
         detail.setMatchId(record.getMatchRecordId());
         detail.setMatchScore(matchRecord.getMatchScore().doubleValue());
@@ -434,12 +537,15 @@ public class ResumeOptimizationService {
         detail.setScoreAfter(record.getScoreAfter() == null ? null : record.getScoreAfter().doubleValue());
         detail.setDimensionScoresAfter(record.getDimensionScoresAfter());
         detail.setEvaluatedAt(record.getEvaluatedAt());
-        detail.setVersionNo(record.getVersionNo());
-        detail.setModelName(record.getModelName());
-        detail.setStatus(record.getStatus());
-        detail.setCreatedAt(record.getCreatedAt());
-        detail.setUpdatedAt(record.getUpdatedAt());
         return detail;
+    }
+
+    /** M16：产物类操作（编辑 / 评估 / 导出 / 面试来源装配）要求任务已成功完成 */
+    private static void requireSuccess(ResumeOptimization record, String action) {
+        if (!ResumeOptimization.STATUS_SUCCESS.equals(record.getStatus())) {
+            throw BusinessException.badRequest(
+                    "优化尚未生成完成，暂不能" + action + "（当前状态：" + record.getStatus() + "）");
+        }
     }
 
     private static ResumeOptimizationView toView(ResumeOptimization record, Resume resume, Job job,
@@ -452,7 +558,8 @@ public class ResumeOptimizationService {
         view.setJobName(job.getJobName());
         view.setCompanyName(job.getCompanyName());
         view.setVersionNo(record.getVersionNo());
-        view.setMatchScore(matchRecord.getMatchScore().doubleValue());
+        // M16：未完成行没有匹配记录——列表页按状态标签渲染，分数保持 null
+        view.setMatchScore(matchRecord == null ? null : matchRecord.getMatchScore().doubleValue());
         view.setScoreAfter(record.getScoreAfter() == null ? null : record.getScoreAfter().doubleValue());
         view.setStatus(record.getStatus());
         view.setCreatedAt(record.getCreatedAt());

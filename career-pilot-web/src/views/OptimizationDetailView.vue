@@ -10,9 +10,11 @@ import {
   evaluateOptimization,
   exportOptimization,
   getOptimization,
+  retryOptimization,
   saveOptimizationContent,
 } from '@/api/optimization'
 import { getResume } from '@/api/resume'
+import AiWaiting from '@/components/AiWaiting.vue'
 import ChangeCompare from '@/components/ChangeCompare.vue'
 import DimensionBars from '@/components/DimensionBars.vue'
 import ScoreRing from '@/components/ScoreRing.vue'
@@ -74,6 +76,8 @@ async function load() {
   finally {
     loading.value = false
   }
+  // M16：任务进行中（PENDING/PROCESSING）时启动轮询；完成或失败即停止
+  startPollingIfNeeded()
 }
 
 /** 探测源资源是否仍可访问（404 即已删除）；探测失败不影响报告本体 */
@@ -87,6 +91,87 @@ async function probeSources() {
 }
 
 onMounted(load)
+
+/* ---------- M16：任务态（异步化后 PENDING/PROCESSING/FAILED 的轮询与重试） ---------- */
+
+/** 任务未成功完成时返回其状态；SUCCESS 或无记录时为 null */
+const taskState = computed(() => {
+  const status = report.value?.status
+  if (!status || status === 'SUCCESS') {
+    return null
+  }
+  return status
+})
+
+/** 阶段文案（PENDING/PROCESSING 的进度展示） */
+const stageText = computed(() => {
+  const stage = report.value?.stage
+  if (stage === 'MATCHING') {
+    return '正在进行岗位匹配分析…'
+  }
+  if (stage === 'GENERATING') {
+    return '正在生成优化稿…'
+  }
+  return '任务已受理，正在排队等待后台执行…'
+})
+
+let pollTimer = null
+
+/** 任务进行中时每 3 秒轮询详情；完成或失败即停止 */
+function startPollingIfNeeded() {
+  stopPolling()
+  if (!taskState.value || taskState.value === 'FAILED') {
+    return
+  }
+  pollTimer = setInterval(async () => {
+    try {
+      // 先记住更新前的"未保存改动"状态：report 一旦替换，dirty 会立刻变为 true（草稿还是空串），
+      // 必须在替换前判断，否则用户未编辑时也会跳过下方同步
+      const wasDirty = dirty.value
+      report.value = await getOptimization(optimizationId)
+      // 用户尚未编辑时，把完成后的当前稿同步进编辑器（与 load 的初始化口径一致）
+      if (!wasDirty) {
+        draft.value = report.value.editedContent ?? report.value.optimizedContent ?? ''
+      }
+      if (!taskState.value || taskState.value === 'FAILED') {
+        stopPolling()
+        if (taskState.value !== 'FAILED') {
+          ElMessage.success('优化已完成')
+        }
+      }
+    }
+    catch {
+      // 单次轮询失败忽略（下一轮再试），不打断页面
+    }
+  }, 3000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+onUnmounted(stopPolling)
+
+const retrying = ref(false)
+
+/** 手动重试失败任务（6A.7，M16） */
+async function handleRetry() {
+  retrying.value = true
+  try {
+    report.value = await retryOptimization(optimizationId)
+    ElMessage.success('已重新提交，任务转入后台执行')
+    startPollingIfNeeded()
+  }
+  catch (error) {
+    ElMessage.error(error.message)
+  }
+  finally {
+    retrying.value = false
+  }
+}
 
 /** 未保存改动时拦截浏览器关闭/刷新（页面内操作另有提示） */
 function onBeforeUnload(event) {
@@ -282,7 +367,42 @@ function fillHistoryFromCompare() {
     </div>
 
     <StateBlock :loading="loading" :error="loadError" @retry="load">
-      <div v-if="report" class="layout">
+      <!-- M16：任务进行中 / 失败态（异步化后的 PENDING/PROCESSING/FAILED） -->
+      <el-card v-if="report && taskState" shadow="never" class="card task-card">
+        <template #header>
+          <div class="card__head">
+            <h2>优化任务</h2>
+            <el-tag :type="taskState === 'FAILED' ? 'danger' : 'primary'" size="small" effect="light">
+              {{ taskState === 'FAILED' ? '生成失败' : '生成中' }}
+            </el-tag>
+          </div>
+        </template>
+        <template v-if="taskState === 'FAILED'">
+          <el-alert
+            type="error"
+            :closable="false"
+            show-icon
+            :title="report.errorMessage || '任务执行失败，可重试'"
+          />
+          <div class="task-card__foot">
+            <el-button type="primary" :loading="retrying" @click="handleRetry">
+              重试
+            </el-button>
+            <el-button @click="router.push({ name: 'optimizations' })">
+              返回列表
+            </el-button>
+          </div>
+        </template>
+        <template v-else>
+          <AiWaiting
+            :title="stageText"
+            hint="任务在后台执行（通常 1–3 分钟），可以离开此页面，稍后回来查看。"
+            leave-hint="进度每 3 秒自动刷新。"
+          />
+        </template>
+      </el-card>
+
+      <div v-else-if="report" class="layout">
         <div class="layout__main">
           <!-- ① 优化前后匹配度 + ② 维度对比 -->
           <el-card shadow="never" class="card">
@@ -718,6 +838,13 @@ function fillHistoryFromCompare() {
 </template>
 
 <style scoped>
+/* M16：任务进行中 / 失败态的卡片布局 */
+.task-card__foot {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 .page-head {
   margin-bottom: 16px;
 }

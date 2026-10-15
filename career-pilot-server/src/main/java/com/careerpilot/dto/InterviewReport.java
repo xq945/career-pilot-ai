@@ -65,6 +65,12 @@ public class InterviewReport {
 
     private List<String> recommendations;
 
+    /** M15：总评来源（AI = 模型生成；DEGRADED = 系统降级汇总）；未完成或历史数据为 null */
+    private String summarySource;
+
+    /** M15：总评生成时间（含重新生成） */
+    private LocalDateTime summaryGeneratedAt;
+
     private List<CategoryScore> categoryScores;
 
     private List<ReportQuestion> questions;
@@ -227,6 +233,22 @@ public class InterviewReport {
 
     public void setRecommendations(List<String> recommendations) {
         this.recommendations = recommendations;
+    }
+
+    public String getSummarySource() {
+        return summarySource;
+    }
+
+    public void setSummarySource(String summarySource) {
+        this.summarySource = summarySource;
+    }
+
+    public LocalDateTime getSummaryGeneratedAt() {
+        return summaryGeneratedAt;
+    }
+
+    public void setSummaryGeneratedAt(LocalDateTime summaryGeneratedAt) {
+        this.summaryGeneratedAt = summaryGeneratedAt;
     }
 
     public List<CategoryScore> getCategoryScores() {

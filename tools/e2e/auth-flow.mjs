@@ -114,7 +114,7 @@ try {
 
   await page.fill(1, SEED_PASS)
   await page.click('.auth__submit')
-  await page.waitFor(`location.pathname === '/dashboard'`, { label: '跳转仪表盘' })
+  await page.waitFor(`location.pathname === '/dashboard'`, { label: '跳转工作台' })
   await page.waitFor('!!document.querySelector(".topbar__user-name")', { label: '顶栏渲染' })
 
   const stored = await page.evaluate(`JSON.stringify({
@@ -130,7 +130,7 @@ try {
     user?.username === SEED_USER && !('password' in user), JSON.stringify(user))
   check('   顶栏显示当前用户', (await page.textOf('.topbar__user-name')) === SEED_USER)
   check('   页面标题符合「页面名 · 站点名」规范',
-    (await page.evaluate('document.title')) === '仪表盘 · 智能求职辅助平台',
+    (await page.evaluate('document.title')) === '工作台 · 智能求职辅助平台',
     await page.evaluate('document.title'))
   check('   页面展示 /api/user/profile 的资料',
     await page.evaluate(`document.body.innerText.includes(${JSON.stringify(SEED_USER)})`))
@@ -153,7 +153,7 @@ try {
   // ------------------------------------------------------------ ④ 刷新恢复
 
   await page.reload()
-  await page.waitFor(`location.pathname === '/dashboard'`, { label: '刷新后仍在仪表盘' })
+  await page.waitFor(`location.pathname === '/dashboard'`, { label: '刷新后仍在工作台' })
   check('④ 刷新页面后登录状态恢复',
     await page.evaluate(`!!localStorage.getItem('token') && !!document.querySelector('.topbar__user-name')`))
 
@@ -248,7 +248,7 @@ try {
   await page.waitFor(`location.pathname === '/dashboard'`, { label: '注册后自动登录' })
 
   const registered = await page.evaluate(`JSON.parse(localStorage.getItem('user') || 'null')?.username`)
-  check('⑨ 注册成功后自动登录并跳转仪表盘', registered === NEW_USER, `注册用户 ${registered}`)
+  check('⑨ 注册成功后自动登录并跳转工作台', registered === NEW_USER, `注册用户 ${registered}`)
   await shot('10-register-success')
 
   // ------------------------------------------------------------ ⑩ 404

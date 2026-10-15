@@ -34,7 +34,7 @@ career-pilot-ai/
 
 ## 项目进度
 
-第一版（M1–M9）与后续增强（M11 简历定向优化、M12 面试接入工作流、M13 工作台聚合与版本对比）均已完成并逐一实测，验证过程与结果见 `docs/验证记录.md`：
+第一版（M1–M9）与后续增强（M11–M19：简历定向优化、面试接入工作流、工作台聚合与版本对比、AI 基建与多模型 Provider、面试域升级、创建优化异步化、面试日程、登录图形验证码、岗位投递入口）均已完成并逐一实测，验证过程与结果见 `docs/验证记录.md`：
 
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
@@ -50,8 +50,14 @@ career-pilot-ai/
 | M11 | 简历定向优化（匹配内核 + 按岗位改写简历 + 编辑/评估/DOCX 导出） | 已完成 |
 | M12 | 面试接入工作流（携带简历/优化上下文出题，来源可追溯） | 已完成 |
 | M13 | 工作台聚合与版本对比（仪表盘最近任务时间线 + 优化稿行内 diff） | 已完成 |
+| M14 | AI 基建（多模型 Provider：结构化修复重试 + 用户级模型服务配置与运行时切换） | 已完成 |
+| M15 | 面试域升级（Skill 驱动出题 + 评估可靠性：总评可重新生成、失败降级标注） | 已完成 |
+| M16 | 创建优化异步化（Redis 任务队列 + 卡住任务恢复，前端轮询进度） | 已完成 |
+| M17 | 面试日程（邀请文本解析 + 列表/日历双视图 + 状态流转与定时过期） | 已完成 |
+| M18 | 登录图形验证码（一次性 + 容量上限的本地缓存，既有认证链路零改动） | 已完成 |
+| M19 | 岗位投递入口（用户自填投递链接 + 列表「投递」按钮，仅跳转不记状态） | 已完成 |
 
-演示数据一键就绪（仪表盘准备清单六步全亮）：
+演示数据一键就绪（工作台核心流程五步全亮）：
 
 ```bash
 node tools/seed/demo-data.mjs --matches 2 --optimizations 1 --interviews 1   # 账号 demo / demo1234
@@ -67,6 +73,7 @@ node tools/seed/demo-data.mjs --matches 2 --optimizations 1 --interviews 1   # �
 | Maven | 3.9+ | 3.9.16 |
 | Node.js | 20+ | 24.21.0 |
 | MySQL | 8.0+ | 8.0.46 |
+| Redis | 6+（**M16 起**，仅「创建优化」异步链路需要；`app.optimization.async.enabled=false` 时可不装） | 本地服务 `6379` |
 
 ### 1. 初始化数据库
 
@@ -74,7 +81,7 @@ node tools/seed/demo-data.mjs --matches 2 --optimizations 1 --interviews 1   # �
 mysql -u root -p < Mysql/career_pilot_init.sql
 ```
 
-脚本创建 `career_pilot` 库（utf8mb4 / utf8mb4_0900_ai_ci）与 10 张表，内容由《数据库设计》的 DDL 生成，与设计文档保持同步。
+脚本创建 `career_pilot` 库（utf8mb4 / utf8mb4_0900_ai_ci）与 13 张表，内容由《数据库设计》的 DDL 生成，与设计文档保持同步。
 
 ### 2. 配置后端
 
@@ -92,6 +99,11 @@ cp application-local.yml.example application-local.yml
 | `spring.datasource.password` | MySQL 密码 |
 | `spring.ai.deepseek.api-key` | DeepSeek API Key —— **缺失会导致应用启动失败**，非仅调用时失败 |
 | `app.jwt.secret` | JWT 签名密钥，用 `openssl rand -base64 48` 生成 |
+
+**Redis 与「创建优化」异步链路（M16）**：默认连接 `redis://localhost:6379`（配置项 `app.optimization.async.redis-address`）。
+
+- 开启异步时 Redis 是**启动前置依赖**——应用启动会主动探活，连不上即启动失败（避免"应用起来了但任务永远不执行"）；
+- 无 Redis 环境可在 `application.yml` 中设 `app.optimization.async.enabled: false`：创建优化退化为**同步执行**（与旧版行为一致，等待 25–80 秒后返回），其余功能不受影响。
 
 `application-local.yml` 已被 `.gitignore` 忽略，不会进入版本库。
 

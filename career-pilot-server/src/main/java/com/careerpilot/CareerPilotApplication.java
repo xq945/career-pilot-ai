@@ -4,9 +4,14 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import com.careerpilot.config.AgentProperties;
+import com.careerpilot.config.AiCallProperties;
+import com.careerpilot.config.CaptchaProperties;
+import com.careerpilot.config.LlmProperties;
 import com.careerpilot.config.MatchScoringProperties;
+import com.careerpilot.config.OptimizationAsyncProperties;
 
 /**
  * 智能求职辅助平台后端服务启动类。
@@ -20,7 +25,10 @@ import com.careerpilot.config.MatchScoringProperties;
  * （否则构造参数会被当作待注入 bean 而启动失败）。
  */
 @SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
-@EnableConfigurationProperties({MatchScoringProperties.class, AgentProperties.class})
+@EnableScheduling
+@EnableConfigurationProperties({MatchScoringProperties.class, AgentProperties.class,
+        LlmProperties.class, AiCallProperties.class, OptimizationAsyncProperties.class,
+        CaptchaProperties.class})
 public class CareerPilotApplication {
 
     public static void main(String[] args) {

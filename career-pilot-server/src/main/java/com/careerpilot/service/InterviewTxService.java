@@ -36,6 +36,12 @@ public class InterviewTxService {
 
     private static final Logger log = LoggerFactory.getLogger(InterviewTxService.class);
 
+    /** 总评来源：模型生成成功（M15，《数据库设计》5.14） */
+    public static final String SUMMARY_SOURCE_AI = "AI";
+
+    /** 总评来源：模型失败后的系统降级汇总（M15） */
+    public static final String SUMMARY_SOURCE_DEGRADED = "DEGRADED";
+
     private final InterviewSessionMapper sessionMapper;
 
     private final InterviewQuestionMapper questionMapper;
@@ -63,6 +69,8 @@ public class InterviewTxService {
             entity.setSessionId(session.getId());
             entity.setQuestion(question.getQuestion());
             entity.setQuestionCategory(question.getQuestionCategory());
+            // M15：知识点摘要（清洗后可能为 null——读取方回退题干前 30 字）
+            entity.setTopicSummary(question.getTopicSummary());
             entity.setSortOrder(sortOrder++);
             // 显式设置时间：MP 的 insert 不回读数据库默认值，且裁到秒与 DATETIME(0) 对齐
             entity.setCreatedAt(session.getCreatedAt());
@@ -164,9 +172,12 @@ public class InterviewTxService {
     /**
      * 写入总评（第二个短事务）。由 {@link InterviewService} 在模型调用成功后调用；
      * **失败不阻断提交**由调用方负责（本方法只负责写入）。
+     *
+     * @param source 总评来源（{@link #SUMMARY_SOURCE_AI} / {@link #SUMMARY_SOURCE_DEGRADED}，
+     *               M15 起随总评落库——"降级"可见而非静默缺失）
      */
     @Transactional
-    public void saveSummary(Long sessionId, InterviewSummaryAiOutput summary) {
+    public void saveSummary(Long sessionId, InterviewSummaryAiOutput summary, String source) {
         InterviewSession update = new InterviewSession();
         update.setId(sessionId);
         update.setOverallSummary(summary.getSummary());
@@ -176,7 +187,10 @@ public class InterviewTxService {
         update.setWeaknesses(summary.getWeaknesses() == null ? List.of() : summary.getWeaknesses());
         update.setRecommendations(summary.getRecommendations() == null
                 ? List.of() : summary.getRecommendations());
-        update.setUpdatedAt(LocalDateTime.now().withNano(0));
+        LocalDateTime now = LocalDateTime.now().withNano(0);
+        update.setSummarySource(source);
+        update.setSummaryGeneratedAt(now);
+        update.setUpdatedAt(now);
         sessionMapper.updateById(update);
     }
 

@@ -273,8 +273,12 @@ try {
   })()`)
   await selectDialogOption(JOB_NAME)
 
-  const linkedTitle = await page.evaluate(
-    `document.querySelector('.el-dialog .el-form-item:nth-child(2) .el-input__inner')?.value ?? ''`)
+  // 按 label 定位：M12 起弹窗在「选择岗位」后插入了「关联简历（可选）」，nth-child 定位已过时
+  const linkedTitle = await page.evaluate(`(() => {
+    const item = [...document.querySelectorAll('.el-dialog .el-form-item')]
+      .find((el) => el.querySelector('.el-form-item__label')?.textContent.includes('面试名称'))
+    return item?.querySelector('.el-input__inner')?.value ?? ''
+  })()`)
   check('   选择岗位后名称自动联动为「{岗位名}模拟面试」',
     linkedTitle === `${JOB_NAME}模拟面试`, linkedTitle)
 
@@ -424,6 +428,41 @@ try {
     barRows === report.categoryScores.length,
     `页面 ${barRows} 行 · 接口 ${report.categoryScores.length} 组`)
   await shot('08-report-completed')
+
+  // ------------------------------------------------------------ ⑧b 重新生成总评（M15）
+
+  check('   总评来源标注为 AI（M15 新增字段）', report.summarySource === 'AI',
+    String(report.summarySource))
+
+  const regenerateClicked = await page.evaluate(`(() => {
+    const btn = [...document.querySelectorAll('.card__head-actions .el-button')]
+      .find((el) => el.textContent.trim() === '重新生成')
+    if (!btn) return false
+    btn.click()
+    return true
+  })()`)
+  check('   总评卡出现「重新生成」按钮（M15）', regenerateClicked)
+  await page.waitFor(`!!document.querySelector('.el-message-box__btns')`, { label: '重生成确认框' })
+  await page.evaluate(`(() => {
+    const btn = [...document.querySelectorAll('.el-message-box__btns .el-button')]
+      .find((el) => el.textContent.trim() === '重新生成')
+    if (!btn) throw new Error('未找到确认按钮')
+    btn.click()
+    return true
+  })()`)
+  await page.waitFor(
+    `document.querySelector('.el-message__content')?.textContent?.includes('总评已重新生成') ?? false`,
+    { label: '重生成完成提示', timeout: 90000 })
+  check('   重新生成成功：页面提示并刷新总评', true)
+  const regenerated = (await api(`/interviews/${sessionId}/report`)).data
+  check('   重生成后接口来源为 AI、生成时间更新、总分不变',
+    regenerated.summarySource === 'AI'
+      && regenerated.summaryGeneratedAt !== null
+      && regenerated.totalScore === report.totalScore,
+    `source=${regenerated.summarySource} total=${regenerated.totalScore} vs ${report.totalScore}`)
+  check('   页面总评文本已刷新为新内容',
+    (await page.textOf('.score-row__summary')).includes(regenerated.overallSummary.slice(0, 12)))
+  await shot('08b-summary-regenerated')
 
   // 查看回答：展开第 1 题，显示回答与点评（数据来自报告响应，无额外请求）
   await page.evaluate(`(() => {

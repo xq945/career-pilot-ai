@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 
 import com.careerpilot.ai.AiCallResult;
 import com.careerpilot.common.BusinessException;
@@ -38,6 +40,9 @@ import com.careerpilot.entity.MatchRecord;
 import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
 import com.careerpilot.entity.ResumeOptimization;
+import com.careerpilot.service.optimization.OptimizationStreamProducer;
+import com.careerpilot.service.optimization.OptimizationTaskRunner;
+import com.careerpilot.service.optimization.OptimizationTaskStateService;
 import com.careerpilot.mapper.JobAnalysisMapper;
 import com.careerpilot.mapper.JobMapper;
 import com.careerpilot.mapper.MatchRecordMapper;
@@ -106,13 +111,30 @@ class ResumeOptimizationServiceTest {
     @Mock
     private ResumeAiService resumeAiService;
 
+    // M16：任务编排三件套（执行体 / 状态机 / 生产者）
+    @Mock
+    private OptimizationTaskRunner taskRunner;
+
+    @Mock
+    private OptimizationTaskStateService stateService;
+
+    @Mock
+    private OptimizationStreamProducer streamProducer;
+
+    @Mock
+    private ObjectProvider<OptimizationStreamProducer> streamProducerProvider;
+
     private ResumeOptimizationService service;
+
+    /** insert 时写入的实体引用（create 末尾 selectById 回读用） */
+    private ResumeOptimization insertedRecord;
 
     @BeforeEach
     void setUp() {
         service = new ResumeOptimizationService(optimizationMapper, matchRecordMapper, resumeMapper, jobMapper,
                 resumeAnalysisMapper, jobAnalysisMapper, resumeService, jobService, resumeAnalysisService,
-                jobAnalysisService, matchService, matchScoringService, resumeOptimizationAiService, resumeAiService);
+                jobAnalysisService, matchService, matchScoringService, resumeOptimizationAiService, resumeAiService,
+                taskRunner, stateService, streamProducerProvider);
     }
 
     // ---------------------------------------------------------------- 创建前置校验
@@ -150,8 +172,10 @@ class ResumeOptimizationServiceTest {
     // ---------------------------------------------------------------- 创建成功路径
 
     @Test
-    void create_success_insertsRecordWithGeneratedContentAndAssemblesDetail() {
+    void create_success_insertsPendingTaskAndEnqueues() {
         stubHappyPath();
+        when(streamProducerProvider.getIfAvailable()).thenReturn(streamProducer);
+        when(streamProducer.send(any())).thenReturn(true);
         ArgumentCaptor<ResumeOptimization> inserted = ArgumentCaptor.forClass(ResumeOptimization.class);
 
         ResumeOptimizationDetail detail = service.create(USER_ID, request());
@@ -159,21 +183,46 @@ class ResumeOptimizationServiceTest {
         verify(optimizationMapper).insert(inserted.capture());
         ResumeOptimization record = inserted.getValue();
         assertThat(record.getVersionNo()).isEqualTo(1);
-        assertThat(record.getMatchRecordId()).isEqualTo(501L);
-        assertThat(record.getOptimizedContent()).contains("## 技能");
-        assertThat(record.getChanges()).hasSize(1);
-        assertThat(record.getGapQuestions()).containsExactly("项目的 QPS 是多少？");
-        assertThat(record.getStatus()).isEqualTo(ResumeOptimization.STATUS_SUCCESS);
+        assertThat(record.getStatus()).isEqualTo(ResumeOptimization.STATUS_PENDING);
+        assertThat(record.getMatchRecordId()).isNull();      // 匹配尚未发生（M16 异步语义）
+        assertThat(record.getOptimizedContent()).isNull();
+        assertThat(record.getModelName()).isNull();
 
+        // 异步路径：模型与执行体都不在请求线程内触达
+        verifyNoInteractions(matchService, matchScoringService, resumeOptimizationAiService, taskRunner);
+        verify(streamProducer).send(new OptimizationStreamProducer.OptimizationTask(301L, USER_ID));
+
+        // 详情：未完成态只装配来源与任务控制字段，产物字段为空
         assertThat(detail.getId()).isEqualTo(301L);
-        assertThat(detail.getMatchScore()).isEqualTo(75.75);
-        assertThat(detail.getScoreAfter()).isNull();
+        assertThat(detail.getStatus()).isEqualTo(ResumeOptimization.STATUS_PENDING);
         assertThat(detail.getResumeName()).isEqualTo("Java后端简历");
         assertThat(detail.getJobName()).isEqualTo("Java 后端开发实习生");
-        assertThat(detail.getResumeVersionNo()).isEqualTo(2);
-        assertThat(detail.getJobVersionNo()).isEqualTo(1);
-        assertThat(detail.getJobRequirements().getRequiredSkills()).containsExactly("Java");
-        assertThat(detail.getResumeAdvantages()).containsExactly("技能组合与岗位相关");
+        assertThat(detail.getResumeVersionNo()).isNull();
+        assertThat(detail.getOptimizedContent()).isNull();
+    }
+
+    @Test
+    void create_enqueueUnavailable_fallsBackToSyncExecution() {
+        stubHappyPath();
+        // 异步未启用（enabled=false）或入队失败 → 降级同步执行（不把任务静默丢失）
+        when(streamProducerProvider.getIfAvailable()).thenReturn(null);
+        when(stateService.markProcessing(301L)).thenReturn("attempt-1");
+
+        service.create(USER_ID, request());
+
+        verify(stateService).markProcessing(301L);
+        verify(taskRunner).run(301L, "attempt-1");
+    }
+
+    @Test
+    void retry_onlyFailedTaskCanBeRetried() {
+        ResumeOptimization record = storedRecord();
+        record.setStatus(ResumeOptimization.STATUS_SUCCESS);
+        when(optimizationMapper.selectOne(any())).thenReturn(record);
+
+        assertThatThrownBy(() -> service.retry(USER_ID, 301L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("仅失败的任务可以重试");
     }
 
     // ---------------------------------------------------------------- 保存编辑稿
@@ -289,17 +338,18 @@ class ResumeOptimizationServiceTest {
         when(jobService.getOwnedJob(USER_ID, JOB_ID)).thenReturn(job());
         when(resumeAnalysisService.findLatestSuccess(RESUME_ID)).thenReturn(resumeAnalysis());
         when(jobAnalysisService.findLatestSuccess(JOB_ID)).thenReturn(jobAnalysis());
-        when(matchService.create(any(), any(), any(), any())).thenReturn(matchDetail());
-        when(matchScoringService.score(any(), any())).thenReturn(scoring());
-        when(resumeOptimizationAiService.generate(any(), any(), any(), any())).thenReturn(generated());
         // 版本号查询（首次创建 → MAX 为空）
         when(optimizationMapper.selectOne(any())).thenReturn(null);
         doAnswer(invocation -> {
             ResumeOptimization record = invocation.getArgument(0);
             record.setId(301L);
+            insertedRecord = record;   // 保存引用：create 末尾的 selectById 回读
             return 1;
         }).when(optimizationMapper).insert(any(ResumeOptimization.class));
-        stubDetailDependencies(null);
+        // M16：任务行回读 + 未完成态的详情来源查询（resume/job）
+        when(optimizationMapper.selectById(301L)).thenAnswer(invocation -> insertedRecord);
+        when(resumeMapper.selectById(RESUME_ID)).thenReturn(resume());
+        when(jobMapper.selectById(JOB_ID)).thenReturn(job());
     }
 
     /** toDetail 的关联查询（stubHappyPath 与各写路径共用） */

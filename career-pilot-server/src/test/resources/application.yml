@@ -16,6 +16,14 @@ app:
     # 测试专用密钥，长度满足 HS256 的 32 字节要求。
     # 仅供单元测试使用，与真实环境无关。
     secret: test-only-secret-key-do-not-use-in-production-0123456789
+  captcha:
+    # 同 app.match：CaptchaProperties 是构造器绑定的 fail-fast 配置，本文件优先于
+    # src/main/resources/application.yml，必须同步声明，否则上下文加载失败。
+    # 测试关闭校验（验证码行为由 CaptchaServiceTest 直接构造使用例覆盖，不经上下文）。
+    enabled: false
+    fixed-text: ""
+    expire-seconds: 300
+    max-size: 10000
   agent:
     # 同 app.match：本文件在测试 classpath 上优先于 src/main/resources/application.yml，
     # AgentProperties 是构造器绑定的 fail-fast 配置，不同步声明会导致上下文加载测试（与
@@ -25,6 +33,26 @@ app:
     history-message-limit: 10
     history-char-limit: 6000
     catalog-limit: 20
+  ai:
+    # 同 app.match：AiCallProperties 是构造器绑定的 fail-fast 配置，本文件优先于
+    # src/main/resources/application.yml，必须同步声明，否则上下文加载失败。
+    structured-max-attempts: 2
+  llm:
+    # 用户级模型服务 API Key 的加密主密钥（测试专用固定值，与真实环境无关）。
+    encryption-key: test-only-llm-encryption-key-0123456789
+  schedule:
+    # 测试环境同样声明：避免 @Scheduled 的占位符在测试上下文里解析为默认值之外的形态
+    expiry-cron: 0 0 * * * *
+  optimization:
+    async:
+      # 测试环境关闭异步（走同步执行）：不依赖 Redis，异步分支由
+      # OptimizationAsyncProperties 的单测与接口层脚本覆盖。
+      enabled: false
+      redis-address: redis://localhost:6379
+      redis-database: 0
+      pending-timeout: 30s
+      processing-timeout: 10m
+      scan-interval: 60s
   match:
     # 本文件在测试 classpath 上**优先于** src/main/resources/application.yml
     # （同名文件只加载一个），因此评分配置必须在测试侧同步声明，

@@ -357,6 +357,8 @@ public class DashboardService {
                         .select(ResumeOptimization::getId, ResumeOptimization::getResumeId,
                                 ResumeOptimization::getJobId, ResumeOptimization::getCreatedAt)
                         .eq(ResumeOptimization::getUserId, userId)
+                        // M16：最近任务只取**成功完成**的优化（PENDING/PROCESSING/FAILED 不是"已完成的任务"）
+                        .eq(ResumeOptimization::getStatus, ResumeOptimization.STATUS_SUCCESS)
                         .orderByDesc(ResumeOptimization::getCreatedAt)
                         .orderByDesc(ResumeOptimization::getId)
                         .last("LIMIT " + RECENT_TASK_PER_KIND));

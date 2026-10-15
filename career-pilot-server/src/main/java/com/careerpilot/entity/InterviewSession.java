@@ -79,6 +79,18 @@ public class InterviewSession {
     @TableField(typeHandler = Jackson3TypeHandler.class)
     private List<String> recommendations;
 
+    /** M14：出题时钉住的模型服务标识（快照列，不建外键；未配置用户的会话为 null） */
+    private String llmProviderKey;
+
+    /** M14：出题时的实际模型名（快照列） */
+    private String llmModel;
+
+    /** M15：总评来源（AI = 模型生成；DEGRADED = 模型失败后的系统降级汇总）；未生成时为 null */
+    private String summarySource;
+
+    /** M15：总评生成时间（完成时或重新生成时更新） */
+    private LocalDateTime summaryGeneratedAt;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -196,6 +208,38 @@ public class InterviewSession {
 
     public void setRecommendations(List<String> recommendations) {
         this.recommendations = recommendations;
+    }
+
+    public String getLlmProviderKey() {
+        return llmProviderKey;
+    }
+
+    public void setLlmProviderKey(String llmProviderKey) {
+        this.llmProviderKey = llmProviderKey;
+    }
+
+    public String getLlmModel() {
+        return llmModel;
+    }
+
+    public void setLlmModel(String llmModel) {
+        this.llmModel = llmModel;
+    }
+
+    public String getSummarySource() {
+        return summarySource;
+    }
+
+    public void setSummarySource(String summarySource) {
+        this.summarySource = summarySource;
+    }
+
+    public LocalDateTime getSummaryGeneratedAt() {
+        return summaryGeneratedAt;
+    }
+
+    public void setSummaryGeneratedAt(LocalDateTime summaryGeneratedAt) {
+        this.summaryGeneratedAt = summaryGeneratedAt;
     }
 
     public LocalDateTime getCreatedAt() {
