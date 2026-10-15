@@ -140,7 +140,7 @@ const formatTime = (iso) => (iso ? dayjs(iso).format('YYYY-MM-DD HH:mm') : '—'
 
 onMounted(async () => {
   await load()
-  // 列表页「发起分析」入口：加载完成后自动发起
+  // 工作台 / 优化链路入口（M20：列表页入口已删除）：加载完成后自动发起
   if (!loading.value && !loadError.value && route.query.auto === '1') {
     startAnalyze()
   }

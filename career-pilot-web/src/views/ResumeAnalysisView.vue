@@ -22,8 +22,8 @@ import StateBlock from '@/components/StateBlock.vue'
  * 未分析（发起入口）/ 等待中（AiWaiting）/ 已分析（结果）；
  * 发起失败时展示 502 系列文案与重试，**不丢失页面上下文**。
  *
- * 列表页的「发起分析」「重新分析」入口以 `?auto=1` 跳转到本页并自动发起
- * （等待态、失败态与重试只在本页实现一处）。
+ * M20 起入口在工作台与优化链路（列表页入口已删除）：均以 `?auto=1` 跳转到本页并自动发起
+ * （等待态、失败态与重试只在本页实现一处）；不带 auto 即「查看」语义。
  */
 const route = useRoute()
 const router = useRouter()
@@ -127,7 +127,7 @@ const formatTime = (iso) => (iso ? dayjs(iso).format('YYYY-MM-DD HH:mm') : '—'
 
 onMounted(async () => {
   await load()
-  // 列表页「发起分析 / 重新分析」入口：加载完成后自动发起
+  // 工作台 / 优化链路入口（M20：列表页入口已删除）：加载完成后自动发起
   if (!loading.value && !loadError.value && route.query.auto === '1') {
     startAnalyze()
   }

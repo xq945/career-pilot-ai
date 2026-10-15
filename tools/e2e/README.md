@@ -19,15 +19,18 @@
 |---|---|
 | `cdp.mjs` | 极简 CDP 客户端：启动浏览器、连接、`evaluate` / `goto` / `fill` / `click` / `waitFor` / 截图，以及断言汇总 |
 | `auth-flow.mjs` | 认证闭环用例（注册、登录、守卫、刷新恢复、令牌失效、退出、404） |
+| `dashboard-flow.mjs` | 工作台用例（空态四卡与四组最近记录、三个快捷操作与 query 入口、统计卡口径与工作流五步进度、资源选择与就地拦截、**登录用户数据隔离**、单接口失败的分区容错、响应式三档）；**零模型调用**，默认浏览器端口 9226 |
 | `profile-flow.mjs` | 个人中心用例（路由导航、昵称修改与即时同步、头像上传/替换/移除、双侧校验、页内退出） |
 | `fixtures.mjs` | 简历测试文件的**动态构造器**（DOCX/PDF/HTML/TXT，含中文；全在内存按格式规范拼装，零二进制入库）。也可单独运行 `node tools/e2e/fixtures.mjs --out ./tmp` 生成一组文件供 curl 验收使用 |
 | `resume-flow.mjs` | 简历管理用例（上传 DOCX/HTML/TXT/PDF、前端即时校验、服务端 415/400/413、删除三条后果与幂等、分页显隐与翻页） |
-| `analysis-flow.mjs` | 简历 AI 分析用例（入口跳转与确认、AiWaiting 等待态、结果渲染、**重新分析生成新版本**、未分析空态、错误态）；**消耗真实模型 token（两次完整分析）** |
+| `analysis-flow.mjs` | 简历 AI 分析用例（经接口取 id 直达分析页〔M20：列表页入口已删除〕、自动发起确认、AiWaiting 等待态、结果渲染、**重新分析生成新版本**、未分析空态、错误态）；**消耗真实模型 token（两次完整分析）** |
 | `resume-file-flow.mjs` | 简历原文件下载用例（名称非文件入口——点击不触发打开/下载、右侧操作列的下载按钮、取回内容与上传原文一致、删除后 404） |
-| `job-flow.mjs` | 岗位模块用例（新建/编辑弹窗与校验、**三态标签**、改描述后立即「分析已过期」、过期重分析生成新版本、描述未变重分析同样生成新版本、删除）；**消耗 3 次真实模型调用** |
+| `job-flow.mjs` | 岗位模块用例（新建/编辑弹窗与校验、改描述后 stale 立即为 true〔接口层〕与分析页过期警告条、过期重分析生成新版本、描述未变重分析同样生成新版本、删除）；**消耗 3 次真实模型调用** |
+| `job-apply-flow.mjs` | 岗位投递入口用例（M19：弹窗「投递链接」字段的**位置**与格式校验、填链接后列表出现「投递」按钮、**点击实际调用 `window.open(url, '_blank', 'noopener,noreferrer')`**〔脚本覆写 `window.open` 捕获实参〕、编辑回填、清空后按钮消失）；**零模型调用**，默认浏览器端口 9222 |
 | `optimization-flow.mjs` | 简历定向优化用例（导航与空态、新建弹窗的就地拦截〔未分析简历/岗位，不发请求〕、选择已有岗位的完整优化流程、工作台区块渲染、编辑保存不覆盖模型原稿、重新评估、历史版本、列表分数对比、**手动输入 JD 的三步编排**）；**消耗 8 次真实模型调用（预置分析 2 + 主流程 3 + 手动 JD 路径 3）**，默认浏览器端口 9225（M11 起替代原 match-flow） |
 | `interview-flow.mjs` | 面试模块用例（创建弹窗校验与出题等待态、**进度分母取实际题数**、逐题作答与评价渲染、重答确认弹窗与**总分即时重算**、报告页总分/总评/分类/查看回答、列表进行中与已完成两态）；**消耗 6 次真实模型调用（出题 1 + 评价 3 + 总评 2）**，默认浏览器端口 9223（便于与优化/岗位流程并行） |
 | `agent-flow.mjs` | 求职智能体用例（侧栏入口点亮、空态与示例问题填入、上下文选择「未分析只提示不拦截」、非流式等待态文案、助手气泡与**工具调用折叠条只显示名称与状态**、会话列表新增/切换、刷新后恢复）；**消耗约 2–3 次真实对话调用（含工具内部的分析）**，默认浏览器端口 9224 |
+| `captcha-flow.mjs` | 登录图形验证码用例（加载即自动获取、点击图片换图、验证码错误提示与自动换图、失败后保留账号并清空敏感输入、填对后登录成功）；**需后端以 `APP_CAPTCHA_FIXED_TEXT` 启动**——脚本看不到图片内容，只能填约定的固定码，默认浏览器端口 9226 |
 
 ## 用法
 
@@ -35,14 +38,17 @@
 
 ```bash
 node tools/e2e/auth-flow.mjs
+node tools/e2e/dashboard-flow.mjs    # 零模型调用（端口 9226）
 node tools/e2e/profile-flow.mjs
 node tools/e2e/resume-flow.mjs
 node tools/e2e/analysis-flow.mjs      # 消耗真实模型 token
 node tools/e2e/resume-file-flow.mjs
 node tools/e2e/job-flow.mjs           # 消耗 2 次真实模型调用
+node tools/e2e/job-apply-flow.mjs     # 零模型调用（端口 9222，与 job-flow 相同——不并行跑）
 node tools/e2e/optimization-flow.mjs  # 消耗真实模型调用（8 次）
 node tools/e2e/interview-flow.mjs     # 消耗 6 次真实模型调用（端口 9223）
 node tools/e2e/agent-flow.mjs         # 消耗约 2–3 次真实对话调用（端口 9224）
+node tools/e2e/captcha-flow.mjs       # 需后端 APP_CAPTCHA_FIXED_TEXT=Ab12 启动（端口 9226）
 
 # 换地址
 node tools/e2e/auth-flow.mjs --base http://localhost:5173 --api http://localhost:8080/api
@@ -100,6 +106,10 @@ node tools/e2e/auth-flow.mjs --shots ./shots
 - **列表行内的主操作按钮随状态变化**：写「点某按钮进详情」类断言前，先确认当前状态下该按钮
   真的存在（面试列表「进行中」的行是「继续答题」、「已完成」才是「查看报告」）。需要跳过
   状态时直接按 URL `goto` 到目标页更稳。
+- **简历/岗位列表页已无分析入口与状态标签（M20）**：进分析页要经接口层取 id 后直接
+  `goto`——`GET /resumes` / `GET /jobs` 按 `created_at` 倒序，新资源在首位；
+  `?auto=1` 的自动发起语义在**页面路由**上，与原来的列表按钮跳转等价（不带 auto 即「查看」语义）。
+  改列表页的按钮/文案前，先 grep 各脚本的行内按钮集合断言与文案子串断言。
 - **`ResourcePicker` 弹窗打开时资源列表仍在异步加载**：`.picker` 容器先渲染，列表项
   `.picker__item` 后到（加载期间是 `.picker__loading` 占位）。等容器出现就点列表项会找不到
   元素（agent-flow 首跑踩到），要按 **item 数量** 等待（`optimization-flow.mjs` / `agent-flow.mjs` 均如此）。
@@ -116,4 +126,8 @@ node tools/e2e/auth-flow.mjs --shots ./shots
   `display: none` 时容器照样可见、照样可点 —— 只断言容器会漏掉「图标消失但功能正常」
   这类 bug（侧边栏折叠开关踩到，用户先发现的）。断图标本身：
   `getComputedStyle(icon).display !== 'none'` 再配 `getBoundingClientRect()` 看尺寸。
+- **`waitFor` 的条件表达式里 `??` 不能与 `&&` / `||` 无括号混用**（语法错误）：把
+  `(el?.src ?? '')` 这类整串再拼一个 `&&` 前缀守卫会解析失败；浏览器端求值抛错后被当作
+  `false`，现象是"条件明明该成立却一直等到超时"，而非报出这个语法错误
+  （`captcha-flow.mjs` 踩到）。整串自带括号，并用 `||` 兜底即可。
 - 每个用例**失败不中断**：`createChecker()` 会跑完全部断言再汇总，一次拿到所有问题。

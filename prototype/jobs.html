@@ -11,12 +11,11 @@
         GET    /api/jobs?page&size       列表
         PUT    /api/jobs/{id}            更新（描述变更后旧分析即视为过期）
         DELETE /api/jobs/{id}            删除（逻辑删除，关联分析记录保留）
-        POST   /api/jobs/{id}/analyze    发起分析
-        GET    /api/jobs/{id}/analysis   读取分析状态与结果
+  V1.25（M20）：本页的分析入口、三态标签与编辑弹窗的过期警告条已删除——操作列只保留
+        「投递（填了链接时）/ 编辑 / 删除」，描述变更对分析的影响改由定向优化链路就地拦截呈现。
+        列表接口的 analyzed / stale 字段仍返回，消费方为工作台、ResourcePicker 与岗位分析页。
   边界：岗位描述更新后，旧分析不会自动作废，但会标记为「基于旧版描述」；
         用户进入分析页时会看到过期提示，并可就地重新分析。
-        列表接口每条记录含 analyzed 与 stale 字段（API V1.3）：
-        !analyzed → 未分析；analyzed && stale → 分析已过期；analyzed && !stale → 已分析。
 -->
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="stylesheet" href="assets/prototype.css">
@@ -33,7 +32,7 @@
         <div class="page-head">
           <div class="page-head__text">
             <h1>岗位管理</h1>
-            <p class="page-head__desc">粘贴目标岗位的招聘原文，系统会自动提取职责、必备技能与加分项</p>
+            <p class="page-head__desc">粘贴目标岗位的招聘原文，用于简历定向优化与模拟面试出题</p>
           </div>
           <div class="page-head__actions">
             <button class="btn btn--primary" data-modal-open="md-job">
@@ -58,12 +57,12 @@
               <div class="item__main">
                 <div class="item__title">
                   Java 后端开发实习生
-                  <span class="tag tag--warn">分析已过期</span>
                 </div>
                 <div class="item__meta">示例科技 · 创建于 2026-10-08 · 描述更新于 2026-10-09 11:30</div>
               </div>
               <div class="item__actions">
-                <a class="btn btn--sm" href="job-analysis.html">查看分析</a>
+                <!-- 投递入口：仅填了投递链接的岗位显示（第二个岗位未填，故无此按钮） -->
+                <button class="btn btn--sm">投递</button>
                 <button class="btn btn--sm" data-modal-open="md-job">编辑</button>
                 <button class="btn btn--sm btn--danger" data-modal-open="md-delete-job">删除</button>
               </div>
@@ -76,12 +75,10 @@
               <div class="item__main">
                 <div class="item__title">
                   后端开发工程师（校招）
-                  <span class="tag tag--ok">已分析</span>
                 </div>
-                <div class="item__meta">云启信息 · 创建于 2026-10-07 · 分析版本 v1</div>
+                <div class="item__meta">云启信息 · 创建于 2026-10-07</div>
               </div>
               <div class="item__actions">
-                <a class="btn btn--sm" href="job-analysis.html">查看分析</a>
                 <button class="btn btn--sm" data-modal-open="md-job">编辑</button>
                 <button class="btn btn--sm btn--danger" data-modal-open="md-delete-job">删除</button>
               </div>
@@ -95,7 +92,7 @@
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></svg>
             </div>
             <h3>还没有目标岗位</h3>
-            <p>把想投递的岗位 JD 原文粘贴进来，系统会提取岗位要求，用于简历匹配与模拟面试出题。</p>
+            <p>把想投递的岗位 JD 原文粘贴进来，用于简历定向优化与模拟面试出题。</p>
             <button class="btn btn--primary" data-modal-open="md-job">新建岗位</button>
           </div>
           -->
@@ -135,6 +132,11 @@
       </div>
 
       <div class="field">
+        <label class="field__label">投递链接</label>
+        <input class="input" type="text" value="https://www.example.com/job/12345" placeholder="选填，如 https://www.example.com/job/12345；填写后列表会出现「投递」按钮">
+      </div>
+
+      <div class="field">
         <label class="field__label">岗位描述<span class="req">*</span></label>
         <textarea class="textarea" style="min-height:180px" placeholder="直接粘贴招聘网站的 JD 原文即可，无需整理格式">岗位职责：
 1. 参与公司核心业务系统的后端开发，负责接口设计与实现；
@@ -153,11 +155,6 @@
 2. 熟悉 Docker、Linux 常用命令，有服务器部署经验；
 3. 有开源项目或个人技术博客。</textarea>
         <div class="counter">328 / 10000</div>
-      </div>
-
-      <div class="alert alert--warn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>
-        <div>修改岗位描述后，已有分析会标记为「基于旧版描述」，需要重新分析才能用于匹配。</div>
       </div>
     </div>
     <div class="modal__foot">

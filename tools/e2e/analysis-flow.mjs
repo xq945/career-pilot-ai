@@ -2,9 +2,11 @@
  * 简历 AI 分析端到端验证（真实浏览器 + 真实模型调用）。
  *
  * 覆盖《开发顺序》M4 的前端验收与《前端原型设计》§5.4／§4.3 对应的页面行为：
- * 列表页分析入口（发起 / 重新分析 / 查看分析）、确认弹窗、AiWaiting 等待态、
+ * 分析页直达（`?auto=1` 自动发起 / 不带 auto 的查看语义）、确认弹窗、AiWaiting 等待态、
  * 结果渲染（概述 / 技能卡 / 优势 / 待改进 / 建议 / 分析信息）、
- * 重新分析路径（内容未变 → 重新生成新版本）、未分析空态、错误态。
+ * 重新分析路径（内容未变 → 重新生成新版本）、未分析空态、错误态；
+ * 返回列表后核对操作列只剩「下载 / 删除」（M20：列表页分析入口与状态标签已删除）。
+ * M20 起「发起分析」不再有列表按钮可点——脚本经接口层取 id，直接 goto 分析页。
  *
  * 接口层的版本递增证据、50200/50201 与越权矩阵由 curl 验证（见《验证记录》§5.1），
  * 本脚本只补浏览器独有的部分。**本脚本会消耗真实模型 token（一次完整分析）**。
@@ -61,6 +63,29 @@ if (seed.code !== 0) {
   process.exit(1)
 }
 console.log(`已创建测试账号 ${USER}\n`)
+
+// ---------------------------------------------------------------- Node 侧登录（取资源 id 用）
+
+// M20 起列表页不再有「发起分析 / 查看分析」按钮，脚本改为：上传后经接口层取 id，直达分析页
+// （`?auto=1` 的自动发起语义在页面路由上，与按钮跳转等价）。
+const loginBody = await fetch(`${API}/auth/login`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ account: USER, password: PASS }),
+}).then((r) => r.json())
+const TOKEN = loginBody.data?.token
+if (!TOKEN) {
+  console.error(`❌ 无法登录测试账号：${loginBody.message || JSON.stringify(loginBody)}`)
+  process.exit(1)
+}
+
+/** 当前用户的简历 id 列表（列表接口按 created_at 倒序） */
+async function listResumeIds() {
+  const res = await fetch(`${API}/resumes?page=1&size=10`, {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  }).then((r) => r.json())
+  return (res.data?.records ?? []).map((item) => item.id)
+}
 
 // ---------------------------------------------------------------- 启动浏览器
 
@@ -123,17 +148,6 @@ const waitAnalysisReady = () => page.waitFor(
   `document.querySelector('.page-head h1')?.textContent?.trim() !== ''`,
   { label: '分析页渲染完成', timeout: 20000 })
 
-/** 点击列表行内按钮（按文案定位第一处匹配） */
-async function clickItemButton(text) {
-  await page.evaluate(`(() => {
-    const btn = [...document.querySelectorAll('.item .el-button')]
-      .find((el) => el.textContent.trim() === '${text}')
-    if (!btn) throw new Error('找不到列表按钮：${text}')
-    btn.click()
-    return true
-  })()`)
-}
-
 /** 点击页内按钮（非列表、非弹窗，如右侧栏的「重新分析」） */
 async function clickPageButton(text) {
   await page.evaluate(`(() => {
@@ -186,23 +200,25 @@ try {
   await waitResumesReady()
 
   await uploadResume(TXT_FILE, 1)
-  await page.waitFor(`document.querySelector('.item .el-tag')?.textContent?.trim() === '未分析'`,
-    { label: '新简历标签为未分析', timeout: 15000 })
-  check('① 上传后列表显示「未分析」标签', (await page.textOf('.item .el-tag')).trim() === '未分析')
+  const [resumeId] = await listResumeIds()
+  check('① 上传成功，接口层可见该简历', Number.isInteger(resumeId), String(resumeId))
 
   const rowButtons = await page.evaluate(
     `[...document.querySelectorAll('.item .el-button')].map((el) => el.textContent.trim())`)
-  check('   未分析行只有「发起分析」与「删除」（无「查看分析」）',
-    rowButtons.includes('发起分析') && rowButtons.includes('删除') && !rowButtons.includes('查看分析'),
+  check('   操作列只有「下载 / 删除」（M20：分析入口已删除）',
+    rowButtons.includes('下载') && rowButtons.includes('删除')
+      && !rowButtons.some((t) => ['发起分析', '查看分析', '重新分析'].includes(t)),
     rowButtons.join('/'))
+  check('   列表项无分析状态标签',
+    (await page.evaluate(`document.querySelectorAll('.item .el-tag').length`)) === 0)
   await shot('01-list-unanalyzed')
 
-  // ------------------------------------------------------------ ② 发起分析（跳转 + 确认）
+  // ------------------------------------------------------------ ② 直达分析页并自动发起（确认弹窗）
 
-  await clickItemButton('发起分析')
+  await page.goto(`${BASE}/resumes/${resumeId}/analysis?auto=1`)
   await page.waitFor(`/^\\/resumes\\/\\d+\\/analysis$/.test(location.pathname)`,
-    { label: '跳转分析页', timeout: 15000 })
-  check('② 点击「发起分析」跳转到 /resumes/{id}/analysis?auto=1',
+    { label: '进入分析页', timeout: 15000 })
+  check('② 以 ?auto=1 直达分析页（等价原列表「发起分析」跳转）',
     (await page.currentPath()).includes('auto=1'), await page.currentPath())
 
   await page.waitFor(MESSAGE_BOX_VISIBLE, { label: '自动弹出确认框', timeout: 15000 })
@@ -285,22 +301,23 @@ try {
     return true
   })()`)
   await waitResumesReady()
-  await page.waitFor(`document.querySelector('.item .el-tag')?.textContent?.trim() === '已分析'`,
-    { label: '列表标签变为已分析', timeout: 15000 })
   const rowButtonsAfter = await page.evaluate(
     `[...document.querySelectorAll('.item .el-button')].map((el) => el.textContent.trim())`)
-  check('⑦ 返回列表：标签「已分析」且出现「查看分析」「重新分析」',
-    rowButtonsAfter.includes('查看分析') && rowButtonsAfter.includes('重新分析'),
+  check('⑦ 返回列表：操作列仍只有「下载 / 删除」，无分析入口',
+    rowButtonsAfter.includes('下载') && rowButtonsAfter.includes('删除')
+      && !rowButtonsAfter.some((t) => ['发起分析', '查看分析', '重新分析'].includes(t)),
     rowButtonsAfter.join('/'))
+  check('   返回列表后仍无分析状态标签（分析结果只在分析页呈现）',
+    (await page.evaluate(`document.querySelectorAll('.item .el-tag').length`)) === 0)
   await shot('05-list-analyzed')
 
-  // ------------------------------------------------------------ ⑦ 查看分析（不自动发起）
+  // ------------------------------------------------------------ ⑦ 查看语义（不带 auto=1，不自动发起）
 
-  await clickItemButton('查看分析')
+  await page.goto(`${BASE}/resumes/${resumeId}/analysis`)
   await page.waitFor(`/^\\/resumes\\/\\d+\\/analysis$/.test(location.pathname)`,
-    { label: '跳转分析页', timeout: 15000 })
+    { label: '进入分析页', timeout: 15000 })
   await page.waitFor(`!!document.querySelector('.summary')`, { label: '直接渲染结果', timeout: 20000 })
-  check('⑧「查看分析」不自动发起（无确认框）且直接展示结果',
+  check('⑧ 不带 auto=1 直达（等价原「查看分析」）：无确认框、直接展示结果',
     !(await page.evaluate(MESSAGE_BOX_VISIBLE)) && !(await page.currentPath()).includes('auto=1'))
 
   // ------------------------------------------------------------ ⑧ 未分析空态（第二份简历）
@@ -308,17 +325,12 @@ try {
   await page.evaluate('location.href = "/resumes"')
   await waitResumesReady()
   await uploadResume(TXT_FILE_2, 2)
-  await page.evaluate(`(() => {
-    const btn = [...document.querySelectorAll('.item .el-button')]
-      .find((el) => el.textContent.trim() === '发起分析')
-    if (!btn) throw new Error('找不到发起分析按钮')
-    // 只点按钮的兄弟节点：先找出未分析行
-    const row = [...document.querySelectorAll('.item')]
-      .find((el) => el.querySelector('.el-tag')?.textContent?.trim() === '未分析')
-    if (!row) throw new Error('找不到未分析行')
-    ;[...row.querySelectorAll('.el-button')].find((b) => b.textContent.trim() === '发起分析').click()
-    return true
-  })()`)
+  const idsAfter = await listResumeIds()
+  const secondResumeId = idsAfter.find((id) => id !== resumeId)
+  if (!secondResumeId) {
+    throw new Error('接口层未取到第二份简历的 id')
+  }
+  await page.goto(`${BASE}/resumes/${secondResumeId}/analysis?auto=1`)
   await page.waitFor(`/^\\/resumes\\/\\d+\\/analysis/.test(location.pathname)`,
     { label: '进入第二份简历分析页', timeout: 15000 })
   await page.waitFor(MESSAGE_BOX_VISIBLE, { label: '确认框出现', timeout: 15000 })

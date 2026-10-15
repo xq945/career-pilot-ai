@@ -2,10 +2,11 @@
  * 岗位模块端到端验证（真实浏览器 + 真实模型调用）。
  *
  * 覆盖《开发顺序》M5 的四条验收标准与《前端原型设计》§5.5／§5.6 对应的页面行为：
- * 新建 / 编辑弹窗（含校验拦截）、三态标签（未分析 / 已分析 / **分析已过期**）、
- * 发起分析（跳转 + 确认 + AiWaiting 等待态 + 结果渲染）、
- * **改描述后列表与详情立即变「分析已过期」**、过期状态下重新分析生成新版本、
- * 描述未变重新分析同样生成新版本（2026-10-13 起不复用）、stale 警告条与降对比度、删除确认与空态。
+ * 新建 / 编辑弹窗（含校验拦截）、分析页直达（`?auto=1`）、确认 + AiWaiting 等待态 + 结果渲染、
+ * **改描述后 stale 立即为 true（接口层）与分析页警告条**、过期状态下重新分析生成新版本、
+ * 描述未变重新分析同样生成新版本（2026-10-13 起不复用）、stale 警告条与降对比度、删除确认与空态；
+ * 列表页操作列只剩「投递（有链接时）/ 编辑 / 删除」（M20：分析入口与三态标签已删除）。
+ * M20 起「发起分析 / 查看分析」不再有列表按钮可点——脚本经接口层取 id，直接 goto 分析页。
  *
  * 接口层的 stale 三态、50200/50201 与越权矩阵由 curl 验证（见《验证记录》§7.1），
  * 本脚本只补浏览器独有的部分。**本脚本会消耗真实模型 token（三次完整分析）**。
@@ -61,6 +62,29 @@ if (seed.code !== 0) {
   process.exit(1)
 }
 console.log(`已创建测试账号 ${USER}\n`)
+
+// ---------------------------------------------------------------- Node 侧登录（取资源 id 用）
+
+// M20 起列表页不再有「发起分析 / 查看分析」按钮，脚本改为：创建后经接口层取 id，直达分析页
+// （`?auto=1` 的自动发起语义在页面路由上，与按钮跳转等价）。
+const loginBody = await fetch(`${API}/auth/login`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ account: USER, password: PASS }),
+}).then((r) => r.json())
+const TOKEN = loginBody.data?.token
+if (!TOKEN) {
+  console.error(`❌ 无法登录测试账号：${loginBody.message || JSON.stringify(loginBody)}`)
+  process.exit(1)
+}
+
+/** 当前用户的岗位 id 列表（列表接口按 created_at 倒序） */
+async function listJobIds() {
+  const res = await fetch(`${API}/jobs?page=1&size=10`, {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  }).then((r) => r.json())
+  return (res.data?.records ?? []).map((item) => item.id)
+}
 
 // ---------------------------------------------------------------- 启动浏览器
 
@@ -171,10 +195,6 @@ const clickPageButton = (text) => page.evaluate(`(() => {
   return true
 })()`)
 
-/** 列表所有状态标签文本（el-tag 切换带过渡动画：动画期间新旧标签并存，故用集合判定） */
-const listTags = () => page.evaluate(
-  `[...document.querySelectorAll('.item .el-tag')].map((e) => e.textContent.trim())`)
-
 /** 当前 ElMessage 是否包含指定文案（全局轻提示，自动消失） */
 const hasMessage = (text) => page.evaluate(
   `[...document.querySelectorAll('.el-message')].some((e) => e.textContent.includes('${text}'))`)
@@ -196,7 +216,7 @@ try {
 
   const emptyText = await page.textOf('.state')
   check('① 空态：文案说明用途并有「新建岗位」入口',
-    emptyText.includes('还没有目标岗位') && emptyText.includes('简历匹配'),
+    emptyText.includes('还没有目标岗位') && emptyText.includes('简历定向优化'),
     emptyText.replace(/\s+/g, ' ').slice(0, 50))
   await shot('01-jobs-empty')
 
@@ -239,25 +259,28 @@ try {
 
   await page.waitFor(`document.querySelectorAll('.item').length === 1`,
     { label: '列表出现新岗位', timeout: 20000 })
-  await page.waitFor(`document.querySelector('.item .el-tag')?.textContent?.trim() === '未分析'`,
-    { label: '新岗位标签为未分析', timeout: 15000 })
+  const [jobId] = await listJobIds()
+  check('   创建成功，接口层可见该岗位', Number.isInteger(jobId), String(jobId))
   const rowButtons = await page.evaluate(
     `[...document.querySelectorAll('.item .el-button')].map((el) => el.textContent.trim())`)
-  check('   创建成功后列表出现该岗位，标签「未分析」，操作含「发起分析」「编辑」「删除」',
-    rowButtons.includes('发起分析') && rowButtons.includes('编辑') && rowButtons.includes('删除'),
+  check('   操作列只有「编辑 / 删除」（M20：分析入口已删除）',
+    rowButtons.includes('编辑') && rowButtons.includes('删除')
+      && !rowButtons.some((t) => ['发起分析', '查看分析'].includes(t)),
     rowButtons.join('/'))
+  check('   列表项无分析状态标签',
+    (await page.evaluate(`document.querySelectorAll('.item .el-tag').length`)) === 0)
   const metaText = await page.textOf('.item__meta')
   check('   列表项显示公司与创建/更新时间',
     metaText.includes(COMPANY) && metaText.includes('创建于') && metaText.includes('描述更新于'),
     metaText.replace(/\s+/g, ' ').slice(0, 60))
   await shot('03-list-created')
 
-  // ------------------------------------------------------------ ③ 发起分析（跳转 + 确认 + 等待态 + 结果）
+  // ------------------------------------------------------------ ③ 直达分析页并自动发起（确认 + 等待态 + 结果）
 
-  await clickItemButton('发起分析')
+  await page.goto(`${BASE}/jobs/${jobId}/analysis?auto=1`)
   await page.waitFor(`/^\\/jobs\\/\\d+\\/analysis$/.test(location.pathname)`,
-    { label: '跳转分析页', timeout: 15000 })
-  check('③ 点击「发起分析」跳转到 /jobs/{id}/analysis?auto=1',
+    { label: '进入分析页', timeout: 15000 })
+  check('③ 以 ?auto=1 直达分析页（等价原列表「发起分析」跳转）',
     (await page.currentPath()).includes('auto=1'), await page.currentPath())
 
   await page.waitFor(MESSAGE_BOX_VISIBLE, { label: '自动弹出确认框', timeout: 15000 })
@@ -303,7 +326,7 @@ try {
       && Number(await page.evaluate(`getComputedStyle(document.querySelector('.layout')).opacity`)) === 1)
   await shot('05-analysis-result')
 
-  // ------------------------------------------------------------ ④ 改描述 → 列表立即「分析已过期」
+  // ------------------------------------------------------------ ④ 改描述 → stale 立即生效（接口层）
 
   await clickPageButton('返回岗位列表')
   await waitJobsReady()
@@ -315,27 +338,32 @@ try {
   await page.waitFor(
     `document.querySelector('.el-dialog .el-input__inner')?.value === '${COMPANY}'`,
     { label: '详情回填完成（列表不含 description，需取详情）', timeout: 15000 })
-  check('   编辑弹窗标题为「编辑岗位」且展示常驻警告条',
+  check('   编辑弹窗标题为「编辑岗位」（M20：常驻警告条已删除）',
     (await page.textOf('.el-dialog__title')).includes('编辑岗位')
-      && (await page.textOf('.el-dialog .el-alert')).includes('重新分析才能用于匹配'))
+      && !(await page.exists('.el-dialog .el-alert')))
 
   await fillDialogInput(0, DESC_V2, '.el-dialog .el-textarea__inner')
   await clickDialogButton('保存')
+  // 保存是异步的（弹窗先关、列表后重载）：等全局成功提示出现再查接口，否则会读到旧描述的数据
   await page.waitFor(
-    `[...document.querySelectorAll('.item .el-tag')].some((e) => e.textContent.trim() === '分析已过期')`,
-    { label: '列表标签变为分析已过期', timeout: 20000 })
-  check('⑤ 修改岗位描述后列表立即变为「分析已过期」（验收标准 1）',
-    (await listTags()).includes('分析已过期'), (await listTags()).join('/'))
+    `[...document.querySelectorAll('.el-message')].some((e) => e.textContent.includes('岗位已更新'))`,
+    { label: '保存成功提示出现', timeout: 20000 })
+  // 列表页已无三态标签（M20）：过期判定改由接口层 stale + 下方分析页警告条承接
+  const staleJob = await fetch(`${API}/jobs/${jobId}`, {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  }).then((r) => r.json())
+  check('⑤ 修改岗位描述后 stale 立即为 true（验收标准 1，接口层）',
+    staleJob.data?.stale === true, String(staleJob.data?.stale))
   const metaAfter = await page.textOf('.item__meta')
   check('   列表项显示「描述更新于」已刷新',
     metaAfter.includes('描述更新于'), metaAfter.replace(/\s+/g, ' ').slice(0, 60))
-  await shot('06-list-stale')
+  await shot('06-list-updated')
 
   // ------------------------------------------------------------ ⑤ 详情页警告条与降对比度
 
-  await clickItemButton('查看分析')
+  await page.goto(`${BASE}/jobs/${jobId}/analysis`)
   await page.waitFor(`/^\\/jobs\\/\\d+\\/analysis$/.test(location.pathname)`,
-    { label: '跳转分析页', timeout: 15000 })
+    { label: '进入分析页', timeout: 15000 })
   await page.waitFor(`!!document.querySelector('.stale-alert')`, { label: '警告条出现', timeout: 20000 })
   const staleText = await page.textOf('.stale-alert')
   check('⑥ 过期状态：顶部警告条说明原描述更新与当前依据版本',
@@ -381,8 +409,12 @@ try {
   await page.waitFor(`!document.querySelector('.ai-waiting')`, { label: '等待态消失', timeout: ANALYSIS_TIMEOUT })
 
   const sideTextReuse = await page.textOf('.layout__side')
+  // 失败时附上页内失败态文本（AiWaiting 消失也可能是 502，此时版本号不会前进）
+  const failText = await page.evaluate(
+    `document.querySelector('.fail') ? document.querySelector('.fail').innerText.replace(/\\n/g, ' ') : '（无失败态）'`)
   check('⑧ 描述未变时重新分析：生成新版本 v3（不再复用）',
-    sideTextReuse.includes('v3'), sideTextReuse.replace(/\s+/g, ' ').slice(0, 60))
+    sideTextReuse.includes('v3'),
+    `side=${sideTextReuse.replace(/\s+/g, ' ').slice(0, 60)} | fail=${failText.slice(0, 100)}`)
   check('   全局提示如实说明「分析完成」', await hasMessage('分析完成'))
 
   // ------------------------------------------------------------ ⑧ 删除（确认文案 + 空态）

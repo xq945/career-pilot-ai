@@ -232,8 +232,11 @@ try {
 
   check('   上传成功后弹窗关闭、列表出现 1 项',
     (await page.textOf('.item__name')) === CUSTOM_NAME)
-  check('   状态标签为「未分析」',
-    (await page.textOf('.item__title .el-tag')) === '未分析')
+  check('   操作列只有「下载 / 删除」、无分析状态标签（M20）',
+    (await page.evaluate(
+      `[...document.querySelectorAll('.item .el-button')].map((el) => el.textContent.trim()).join('/')`))
+      === '下载/删除'
+      && (await page.evaluate(`document.querySelectorAll('.item__title .el-tag').length`)) === 0)
   check('   页内成功提示出现',
     (await page.evaluate('document.body.innerText')).includes('上传成功，文本已提取'))
   await shot('02-docx-uploaded')

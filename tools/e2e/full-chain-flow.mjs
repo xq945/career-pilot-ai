@@ -1,10 +1,11 @@
 /**
- * M9 全链路端到端（主路径）：登录 → 仪表盘空态 → 改昵称 → 上传简历 → 分析
- * → 建岗位 → 分析 → 匹配 → 面试作答 → 智能体对话 → 回仪表盘核对。
+ * M9 全链路端到端（主路径）：登录 → 工作台空态 → 改昵称 → 上传简历 → 分析
+ * → 建岗位 → 分析 → 匹配 → 面试作答 → 智能体对话 → 回工作台核对。
+ * M20 起简历/岗位列表页不再有分析入口——两步分析均经接口层取 id 直达分析页（`?auto=1`）。
  *
  * 作为**演示与回归的依据**（《开发顺序》M9 收尾任务 1）：一条脚本走通全部核心模块的
- * 真实浏览器操作与真实模型调用；末步回到仪表盘，核对四卡数字与本次流程产生的数据
- * 逐一一致、准备清单 6/6、最近匹配与能力差距与优化详情一致。
+ * 真实浏览器操作与真实模型调用；末步回到工作台，核对四卡数字与本次流程产生的数据
+ * 逐一一致、核心工作流 5/5、四组最近记录与能力差距与优化详情一致。
  *
  * 成本：**约 8–10 次真实模型调用**（简历分析 1 + 岗位分析 1 + 匹配解释 1
  *      + 面试出题 1 + 评价 2 + 总评 1 + 助手对话 1–2；分析/匹配皆为首次生成）。
@@ -81,6 +82,18 @@ const USER_ID = loginRes.data.user?.id
 
 console.log(`已创建测试账号 ${USER}（id=${USER_ID}）\n`)
 
+/**
+ * 经接口层取当前用户某类资源的首个 id。
+ * M20 起列表页不再有「发起分析」按钮，脚本改为直达分析页（`?auto=1` 语义在页面路由上、与按钮跳转等价），
+ * 因此需要 id；列表接口按 created_at 倒序，首个即刚创建的资源。
+ */
+async function firstResourceId(kind) {
+  const res = await fetch(`${API}/${kind}?page=1&size=10`, {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  }).then((r) => r.json())
+  return res.data?.records?.[0]?.id
+}
+
 // ---------------------------------------------------------------- 启动浏览器
 
 const browser = await launchBrowser({ port: PORT })
@@ -125,14 +138,6 @@ const clickPageHeadButton = (text) => page.evaluate(`(() => {
   const btn = [...document.querySelectorAll('.page-head .el-button')]
     .find((el) => el.textContent.includes('${text}'))
   if (!btn) throw new Error('找不到页头按钮：${text}')
-  btn.click()
-  return true
-})()`)
-
-const clickItemButton = (text) => page.evaluate(`(() => {
-  const btn = [...document.querySelectorAll('.item .el-button')]
-    .find((el) => el.textContent.trim() === '${text}')
-  if (!btn) throw new Error('找不到列表按钮：${text}')
   btn.click()
   return true
 })()`)
@@ -196,14 +201,19 @@ async function injectFile(file) {
 const cardTexts = () => page.evaluate(
   `[...document.querySelectorAll('.stat')].map((el) => el.innerText.replace(/\\n/g, ' '))`)
 
+/**
+ * 等工作台的四个并行请求全部落地：四张卡显示真实数字（不再是「…」占位）
+ * 且页面内不再有骨架屏。缺了这一步，断言会跑在请求返回之前——V1.23 重构后
+ * 统计卡**恒定渲染**（加载中也有节点），只等节点数量是等不到数据的。
+ */
+const waitDashboardLoaded = () => page.waitFor(
+  `![...document.querySelectorAll('.stat')].some((el) => el.textContent.includes('加载中'))`
+  + ` && document.querySelectorAll('.el-skeleton').length === 0`,
+  { label: '工作台四个请求落地', timeout: 20000 })
+
 /** 列表行文本 */
 const itemTexts = () => page.evaluate(
   `[...document.querySelectorAll('.item')].map((el) => el.innerText.replace(/\\n/g, ' '))`)
-
-/** 等待简历/岗位列表页渲染出可操作的行 */
-const waitItemButtons = () => page.waitFor(
-  `[...document.querySelectorAll('.item .el-button')].some((el) => el.textContent.trim() === '发起分析')`,
-  { label: '列表项渲染完成', timeout: 20000 })
 
 /* ---------------------------------------------------------------- 答题页操作（每步校验确切中间态） */
 
@@ -247,11 +257,11 @@ const gotoQuestion = async (index) => {
   throw new Error(`无法切换到${expected}（题号导航点击被忽略？）`)
 }
 
-/** 走一遍「发起分析 → 确认 → 等待态 → 完成」（简历与岗位两页同构） */
-async function runAnalysis(pageName, resultLabel) {
-  await clickItemButton('发起分析')
-  await page.waitFor(`location.pathname.includes('/analysis')`, { label: `跳转${pageName}分析页`, timeout: 15000 })
-  check(`   点击「发起分析」跳转${pageName}分析页并带 auto=1`,
+/** 走一遍「直达分析页（?auto=1）→ 确认 → 等待态 → 完成」（简历与岗位两页同构） */
+async function runAnalysis(path, pageName, resultLabel) {
+  await page.goto(`${BASE}${path}/analysis?auto=1`)
+  await page.waitFor(`location.pathname.includes('/analysis')`, { label: `进入${pageName}分析页`, timeout: 15000 })
+  check(`   以 ?auto=1 直达${pageName}分析页（等价原列表「发起分析」跳转）`,
     (await page.currentPath()).includes('auto=1'), await page.currentPath())
 
   await page.waitFor(MESSAGE_BOX_VISIBLE, { label: '自动弹出确认框', timeout: 15000 })
@@ -270,7 +280,7 @@ async function runAnalysis(pageName, resultLabel) {
 // ---------------------------------------------------------------- 主流程
 
 try {
-  // ============================================================== ① 登录并落地仪表盘（空态）
+  // ============================================================== ① 登录并落地工作台（空态）
 
   await page.goto(`${BASE}/dashboard`)
   await page.evaluate('localStorage.clear()')
@@ -279,18 +289,22 @@ try {
   await page.fill(0, USER)
   await page.fill(1, PASS)
   await page.click('.auth__submit')
-  await page.waitFor(`location.pathname === '/dashboard'`, { label: '登录后落地仪表盘', timeout: 20000 })
+  await page.waitFor(`location.pathname === '/dashboard'`, { label: '登录后落地工作台', timeout: 20000 })
   await page.waitFor(`document.querySelectorAll('.stat').length === 4`, { label: '统计卡渲染', timeout: 20000 })
+  await waitDashboardLoaded()
+  await page.waitFor(`!!document.querySelector('.progress-row')`, { label: '工作流进度渲染', timeout: 20000 })
 
   const emptyCards = await cardTexts()
-  check('① 新账号落地仪表盘：四卡计数全 0',
+  check('① 新账号落地工作台：四卡计数全 0',
     emptyCards.length === 4 && emptyCards.every((t) => /(^|\s)0[份个次场]/.test(t)),
     emptyCards.join(' / '))
-  check('   准备清单 0/6（六步全部由计数字段推导）',
-    (await page.textOf('.progress-row')).includes('已完成 0 / 6'),
+  check('   核心工作流 0/5（五步由计数字段与最新记录推导）',
+    (await page.textOf('.progress-row')).includes('已完成 0 / 5'),
     await page.textOf('.progress-row'))
-  check('   两个列表区块为空态引导文案（M13 起为「最近任务」卡）',
-    (await page.evaluate(`document.body.innerText`)).includes('还没有任务记录'))
+  check('   四个最近记录区块均为空态引导文案',
+    (await page.evaluate(`document.body.innerText`)).includes('还没有简历')
+    && (await page.evaluate(`document.body.innerText`)).includes('还没有优化记录')
+    && (await page.evaluate(`document.body.innerText`)).includes('还没有面试记录'))
   await shot('01-dashboard-empty')
 
   // ============================================================== ② 修改昵称（/profile）
@@ -328,15 +342,15 @@ try {
   await injectFile({ data: buildTxt(RESUME_TEXT), name: `${RESUME_NAME}.txt`, type: 'text/plain' })
   await clickDialogButton('开始上传')
   await page.waitFor(`document.querySelectorAll('.item').length === 1`, { label: '列表出现新简历', timeout: 30000 })
-  await page.waitFor(`document.querySelector('.item .el-tag')?.textContent?.trim() === '未分析'`,
-    { label: '新简历标签为未分析', timeout: 15000 })
-  check('③ 上传 TXT 简历成功，列表显示「未分析」',
-    (await itemTexts())[0].includes(RESUME_NAME), (await itemTexts())[0].slice(0, 60))
+  const resumeId = await firstResourceId('resumes')
+  check('③ 上传 TXT 简历成功，列表出现该简历（M20：无「未分析」标签）',
+    (await itemTexts())[0].includes(RESUME_NAME) && Number.isInteger(resumeId),
+    (await itemTexts())[0].slice(0, 60))
   await shot('03-resume-uploaded')
 
   // ============================================================== ④ 简历分析
 
-  await runAnalysis('简历', '简历 AI 分析完成并渲染结果')
+  await runAnalysis(`/resumes/${resumeId}`, '简历', '简历 AI 分析完成并渲染结果')
   await shot('04-analysis-done')
 
   // ============================================================== ⑤ 创建岗位（/jobs）
@@ -351,15 +365,15 @@ try {
   await page.fill(0, JOB_DESC, '.el-dialog .el-textarea__inner')
   await clickDialogButton('保存')
   await page.waitFor(`document.querySelectorAll('.item').length === 1`, { label: '列表出现新岗位', timeout: 20000 })
-  await page.waitFor(`document.querySelector('.item .el-tag')?.textContent?.trim() === '未分析'`,
-    { label: '新岗位标签为未分析', timeout: 15000 })
-  check('⑤ 新建岗位成功，列表显示「未分析」',
-    (await itemTexts())[0].includes(JOB_NAME), (await itemTexts())[0].slice(0, 60))
+  const jobId = await firstResourceId('jobs')
+  check('⑤ 新建岗位成功，列表出现该岗位（M20：无「未分析」标签）',
+    (await itemTexts())[0].includes(JOB_NAME) && Number.isInteger(jobId),
+    (await itemTexts())[0].slice(0, 60))
   await shot('05-job-created')
 
   // ============================================================== ⑥ 岗位分析
 
-  await runAnalysis('岗位', '岗位 AI 分析完成并渲染结果')
+  await runAnalysis(`/jobs/${jobId}`, '岗位', '岗位 AI 分析完成并渲染结果')
   await shot('06-job-analyzed')
 
   // ============================================================== ⑦ 简历定向优化（/optimizations）→ 工作台
@@ -383,8 +397,8 @@ try {
   check('⑦ 优化完成，工作台优化前分数环渲染出分数', Number.isFinite(ringScore), `分数=${ringScore}`)
   await shot('07-optimization-workbench')
 
-  // 记录优化详情（供末步与仪表盘 topGaps 比对；用接口读，避免依赖页面结构。
-  // 优化流程内部会写一条 match_record 作为"优化前匹配评估"，仪表盘的统计与差距即来自它）
+  // 记录优化详情（供末步与工作台能力差距比对；用接口读，避免依赖页面结构。
+  // 优化流程内部会写一条 match_record 作为"优化前匹配评估"，工作台的统计与差距即来自它）
   const matchDetail = (await fetch(`${API}/optimizations/${optimizationId}`, {
     headers: { Authorization: `Bearer ${TOKEN}` },
   }).then((r) => r.json())).data
@@ -457,38 +471,52 @@ try {
   check('⑨ 智能体对话返回助手回复', agentAnswer.length > 0, agentAnswer.replace(/\s+/g, ' ').slice(0, 60))
   await shot('09-agent-answer')
 
-  // ============================================================== ⑩ 回仪表盘核对（终局一致性）
+  // ============================================================== ⑩ 回工作台核对（终局一致性）
 
   await page.goto(`${BASE}/dashboard`)
-  await page.waitFor(`document.querySelectorAll('.stat').length === 4`, { label: '仪表盘渲染', timeout: 20000 })
-  await page.waitFor(`document.querySelectorAll('.task-row').length >= 1`, { label: '最近任务渲染', timeout: 20000 })
+  await page.waitFor(`document.querySelectorAll('.stat').length === 4`, { label: '工作台渲染', timeout: 20000 })
+  await waitDashboardLoaded()
+  await page.waitFor(`!!document.querySelector('.progress-row')`, { label: '工作流进度渲染', timeout: 20000 })
+  await page.waitFor(`document.querySelectorAll('.recent-row').length >= 1`, { label: '最近记录渲染', timeout: 20000 })
 
   const finalCards = await cardTexts()
   check('⑩ 四卡数字与本次流程产生的数据一致（1 简历 / 1 岗位 / 1 匹配 / 1 面试）',
     finalCards[0].includes('1份') && finalCards[1].includes('1个')
     && finalCards[2].includes('1次') && finalCards[3].includes('1场'),
     finalCards.join(' / '))
-  check('   脚注同步（简历 1 份已分析 / 岗位 1 个已分析 / 最高分 = 报告分数 / 面试 1 场已完成）',
-    finalCards[0].includes('1 份已完成 AI 分析') && finalCards[1].includes('1 个已完成 AI 分析')
-    && finalCards[2].includes(`最高匹配分 ${matchDetail.matchScore}`) && finalCards[3].includes('1 场已完成'),
+  check('   脚注同步（简历 1 份已分析 / 岗位共 1 个 / 最高分 = 报告分数 / 面试共 1 场）',
+    finalCards[0].includes('1 份已完成 AI 分析') && finalCards[1].includes('共 1 个岗位')
+    && finalCards[2].includes(`最高匹配分 ${matchDetail.matchScore}`) && finalCards[3].includes('共 1 场面试'),
     finalCards.join(' / '))
-  check('   准备清单 6/6（100%）',
-    (await page.textOf('.progress-row')).includes('已完成 6 / 6')
+  check('   核心工作流 5/5（100%）',
+    (await page.textOf('.progress-row')).includes('已完成 5 / 5')
     && (await page.textOf('.progress-row')).includes('100%'),
     await page.textOf('.progress-row'))
 
-  // M13：「最近匹配记录」卡升级为「最近任务」卡（四类动态混合时间线）。
-  // 行数用 ≥4：⑨ 的智能体对话可能调用 analyzeResume 工具、追加一条真实的分析任务（正确行为）。
-  const taskRows = await page.evaluate(
-    `[...document.querySelectorAll('.task-row')].map((el) => el.innerText.replace(/\\n/g, ' '))`)
-  check('   最近任务 ≥4 行且覆盖四类：简历分析 / 岗位分析 / 简历优化 / 模拟面试',
-    taskRows.length >= 4
-    && taskRows.some((row) => row.includes('简历分析') && row.includes(RESUME_NAME))
-    && taskRows.some((row) => row.includes('岗位分析') && row.includes(JOB_NAME))
-    && taskRows.some((row) => row.includes('简历优化')
-      && row.includes(RESUME_NAME) && row.includes(JOB_NAME))
-    && taskRows.some((row) => row.includes('模拟面试')),
-    taskRows.join(' | '))
+  // 四组最近记录各自覆盖本次流程产生的数据（按卡片标题定位，避免跨区块串判）。
+  const rowsIn = async (title) => page.evaluate(`(() => {
+    const card = [...document.querySelectorAll('.el-card')].find(
+      (c) => c.querySelector('.card__head h2')?.textContent.trim() === ${JSON.stringify(title)})
+    return card ? [...card.querySelectorAll('.recent-row')].map((el) => el.innerText.replace(/\\n/g, ' ')) : []
+  })()`)
+
+  const resumeRows = await rowsIn('最近添加的简历')
+  check('   最近添加的简历：含本次上传的简历',
+    resumeRows.some((row) => row.includes(RESUME_NAME)), resumeRows.join(' | '))
+
+  const matchRows = await rowsIn('最近匹配的岗位')
+  check('   最近匹配的岗位：含本次匹配的岗位与匹配分',
+    matchRows.some((row) => row.includes(JOB_NAME) && row.includes(String(matchDetail.matchScore))),
+    matchRows.join(' | '))
+
+  const optimizationRows = await rowsIn('最近的简历优化任务')
+  check('   最近的简历优化任务：含本次的简历与岗位',
+    optimizationRows.some((row) => row.includes(RESUME_NAME) && row.includes(JOB_NAME)),
+    optimizationRows.join(' | '))
+
+  const interviewRows = await rowsIn('最近的 AI 面试记录')
+  check('   最近的 AI 面试记录：含本次面试的岗位',
+    interviewRows.some((row) => row.includes(JOB_NAME)), interviewRows.join(' | '))
 
   // 能力差距概览与报告明细逐条一致（missing 在前、partial 在后、最多 3 条）
   const expectedGaps = [

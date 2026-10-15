@@ -1,23 +1,23 @@
 <script setup>
 import { h, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Plus, UploadFilled } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 
 import { fetchResumeFile, listResumes, removeResume, uploadResume } from '@/api/resume'
-import AnalysisStateTag from '@/components/AnalysisStateTag.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import StateBlock from '@/components/StateBlock.vue'
 
 /**
- * 简历管理（《前端原型设计》§5.3，接口《API接口设计》4.1–4.6）。
+ * 简历管理（《前端原型设计》§5.3，接口《API接口设计》4.1–4.4/4.7）。
  *
  * 页面内容：列表（加载 / 空 / 错误 / 正常四态）+ 上传对话框 + 删除二次确认
- * + 分析入口（M4）+ 原文件下载（V1.12 起为唯一文件入口）。
+ * + 原文件下载（V1.12 起为唯一文件入口）。
  *
- * 分析入口不在此页发起：统一跳转到分析页（`/resumes/:id/analysis`，带 `?auto=1` 自动发起），
- * 等待态、失败态与重试只实现一处（原型 §6.3 的流程：列表 → 分析页 → 等待 → 结果）。
+ * V1.25（M20）：本页的分析入口（发起 / 查看 / 重新分析）与分析状态标签已删除，
+ * 只做材料 CRUD——分析由工作台与定向优化链路发起（原型 §6.3）；
+ * `?upload=1`（工作台快捷操作）仍直接打开上传弹窗。
  *
  * 提示分工（§5.3）：上传的三类失败（41300/41500/400）显示在**弹窗内**并保持弹窗打开
  * （原型 §6.2），成功提示用页内 alert；删除结果用全局提示。
@@ -25,18 +25,7 @@ import StateBlock from '@/components/StateBlock.vue'
  */
 const PAGE_SIZE = 10
 
-const router = useRouter()
-
-/**
- * 打开分析页；`auto=true` 表示进入后自动发起（未分析的「发起分析」与已分析的「重新分析」）。
- */
-function openAnalysis(item, auto = false) {
-  router.push({
-    name: 'resume-analysis',
-    params: { id: item.id },
-    query: auto ? { auto: '1' } : {},
-  })
-}
+const route = useRoute()
 
 /* ---------------------------------------------------------------- 原文件下载 */
 
@@ -112,7 +101,13 @@ function changePage(next) {
 
 const formatTime = (iso) => dayjs(iso).format('YYYY-MM-DD HH:mm')
 
-onMounted(load)
+onMounted(() => {
+  load()
+  // 工作台快捷操作「上传简历」带 `?upload=1` 进入：直接打开上传弹窗
+  if (route.query.upload) {
+    openUpload()
+  }
+})
 
 /* ---------------------------------------------------------------- 上传 */
 
@@ -180,7 +175,7 @@ async function submitUpload() {
     // 列表按 created_at 倒序，新简历在第 1 页首位
     page.value = 1
     await load()
-    uploadNotice.value = `「${data.name}」上传成功，文本已提取，可以发起 AI 分析了。`
+    uploadNotice.value = `「${data.name}」上传成功，文本已提取，可用于简历定向优化。`
   }
   catch (error) {
     // 失败保持弹窗打开、可重新选择文件（§6.2）；三类失败的文案按 §5.3
@@ -257,7 +252,7 @@ async function handleDelete(item) {
       <div>
         <h1>简历管理</h1>
         <p class="page-head__desc">
-          上传 PDF、DOCX、DOC、HTML 或 TXT 简历，系统提取文本后用于 AI 分析与简历定向优化
+          上传 PDF、DOCX、DOC、HTML 或 TXT 简历，系统提取文本后用于简历定向优化与模拟面试
         </p>
       </div>
       <el-button type="primary" :icon="Plus" @click="openUpload">
@@ -293,7 +288,7 @@ async function handleDelete(item) {
         <template #empty>
           <h3 class="state__title">还没有简历</h3>
           <p class="state__text">
-            上传一份 PDF、DOCX、DOC、HTML 或 TXT 简历，系统会自动提取文本，用于 AI 分析与简历定向优化。
+            上传一份 PDF、DOCX、DOC、HTML 或 TXT 简历，系统会自动提取文本，用于简历定向优化与模拟面试。
           </p>
           <el-button type="primary" @click="openUpload">
             上传简历
@@ -308,7 +303,6 @@ async function handleDelete(item) {
             <div class="item__main">
               <div class="item__title">
                 <span class="item__name">{{ item.name }}</span>
-                <AnalysisStateTag :analyzed="item.analyzed" />
               </div>
               <div class="item__meta">
                 {{ item.fileType }} · 上传于 {{ formatTime(item.createdAt) }}
@@ -322,17 +316,6 @@ async function handleDelete(item) {
                 @click="downloadFile(item)"
               >
                 下载
-              </el-button>
-              <template v-if="item.analyzed">
-                <el-button size="small" @click="openAnalysis(item)">
-                  查看分析
-                </el-button>
-                <el-button size="small" @click="openAnalysis(item, true)">
-                  重新分析
-                </el-button>
-              </template>
-              <el-button v-else size="small" type="primary" @click="openAnalysis(item, true)">
-                发起分析
               </el-button>
               <el-button size="small" type="danger" plain @click="handleDelete(item)">
                 删除

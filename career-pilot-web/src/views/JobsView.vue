@@ -1,12 +1,10 @@
 <script setup>
 import { h, nextTick, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Briefcase, Plus } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 
 import { createJob, getJob, listJobs, removeJob, updateJob } from '@/api/job'
-import AnalysisStateTag from '@/components/AnalysisStateTag.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import StateBlock from '@/components/StateBlock.vue'
 
@@ -14,26 +12,20 @@ import StateBlock from '@/components/StateBlock.vue'
  * 岗位管理（《前端原型设计》§5.5，接口《API接口设计》5.1–5.5）。
  *
  * 页面内容：列表（加载 / 空 / 错误 / 正常四态）+ 新建/编辑对话框 + 删除二次确认
- * + 分析入口。与简历管理同构，差异在于：
+ * + 投递入口（M19：岗位填了投递链接时列表出现「投递」按钮，新标签页打开该链接）。
+ * 与简历管理同构，差异在于：
  * - 岗位是**手输文本**（无文件上传），因此无类型/大小预检；
- * - **可编辑**——描述修改后旧分析立即变为「分析已过期」（三态标签的第三态）；
- * - 列表项**不返回 description**，编辑回填需先取详情（§5.3）。
+ * - **可编辑**，列表项**不返回 description**，编辑回填需先取详情（§5.3）。
  *
- * 分析入口不在此页发起：统一跳转到分析页（`/jobs/:id/analysis`，带 `?auto=1` 自动发起），
- * 等待态、失败态与重试只实现一处（同 M4 简历分析的流程）。
+ * V1.25（M20）：本页的分析入口、三态标签与编辑弹窗的过期警告条已删除，只做岗位 CRUD——
+ * 描述变更对分析的影响改由定向优化链路就地拦截呈现（§5.7），分析入口在分析页自身与工作台/优化链路。
  * 时间字段用 dayjs 解析（API §1：精度不保证，禁止字符串截取）。
  */
 const PAGE_SIZE = 10
 
-const router = useRouter()
-
-/** 打开分析页；`auto=true` 表示进入后自动发起（未分析的「发起分析」） */
-function openAnalysis(item, auto = false) {
-  router.push({
-    name: 'job-analysis',
-    params: { id: item.id },
-    query: auto ? { auto: '1' } : {},
-  })
+/** 投递入口（M19）：新标签页打开用户填写的投递网页；noopener/noreferrer 按外部站点对待 */
+function openApply(item) {
+  window.open(item.applyUrl, '_blank', 'noopener,noreferrer')
 }
 
 /* ---------------------------------------------------------------- 列表 */
@@ -80,7 +72,17 @@ const submitting = ref(false)
 const formRef = ref()
 const formError = ref('')
 
-const form = reactive({ companyName: '', jobName: '', description: '' })
+const form = reactive({ companyName: '', jobName: '', description: '', applyUrl: '' })
+
+/** 投递链接选填：留空放行，填了就必须是 http/https（与后端 normalizeApplyUrl 同一口径） */
+function validateApplyUrl(rule, value, callback) {
+  const url = (value || '').trim()
+  if (url && !/^https?:\/\//i.test(url)) {
+    callback(new Error('投递链接需以 http:// 或 https:// 开头'))
+    return
+  }
+  callback()
+}
 
 const formRules = {
   jobName: [
@@ -94,6 +96,10 @@ const formRules = {
   companyName: [
     { max: 100, message: '公司名称不能超过 100 个字符', trigger: 'blur' },
   ],
+  applyUrl: [
+    { max: 500, message: '投递链接不能超过 500 个字符', trigger: 'blur' },
+    { validator: validateApplyUrl, trigger: 'blur' },
+  ],
 }
 
 function openCreate() {
@@ -102,6 +108,7 @@ function openCreate() {
   form.companyName = ''
   form.jobName = ''
   form.description = ''
+  form.applyUrl = ''
   formError.value = ''
   dialogVisible.value = true
   nextTick(() => formRef.value?.clearValidate())
@@ -114,6 +121,7 @@ async function openEdit(item) {
   form.companyName = ''
   form.jobName = ''
   form.description = ''
+  form.applyUrl = ''
   dialogVisible.value = true
   editingLoading.value = true
   try {
@@ -121,6 +129,7 @@ async function openEdit(item) {
     form.companyName = data.companyName || ''
     form.jobName = data.jobName
     form.description = data.description
+    form.applyUrl = data.applyUrl || ''
   }
   catch (error) {
     dialogVisible.value = false
@@ -141,30 +150,25 @@ async function submitForm() {
   formError.value = ''
   const isEditing = editingId.value !== null
   try {
-    // 全量更新语义（§5.4）：三个字段总是整份提交；空公司名归一为 null（后端同样处理）
+    // 全量更新语义（§5.4）：各字段总是整份提交；空公司名/空链接归一为 null（后端同样处理）
     const payload = {
       companyName: form.companyName.trim() || null,
       jobName: form.jobName.trim(),
       description: form.description,
+      applyUrl: form.applyUrl.trim() || null,
     }
     if (isEditing) {
-      const data = await updateJob(editingId.value, payload)
+      await updateJob(editingId.value, payload)
       dialogVisible.value = false
       await load()
-      // 描述变化后旧分析立即过期（§5.4）——如实告知，引导到分析页重新分析
-      if (data.analyzed && data.stale) {
-        ElMessage.warning('岗位已更新。描述变化后原分析已标记为「分析已过期」，请重新分析后再用于匹配')
-      }
-      else {
-        ElMessage.success('岗位已更新')
-      }
+      ElMessage.success('岗位已更新')
     }
     else {
       const data = await createJob(payload)
       dialogVisible.value = false
       page.value = 1 // 列表按 created_at 倒序，新岗位在第 1 页首位
       await load()
-      ElMessage.success(`「${data.jobName}」创建成功，可以发起 AI 分析了`)
+      ElMessage.success(`「${data.jobName}」创建成功，可用于简历定向优化`)
     }
   }
   catch (error) {
@@ -226,7 +230,7 @@ async function handleDelete(item) {
       <div>
         <h1>岗位管理</h1>
         <p class="page-head__desc">
-          粘贴目标岗位的招聘原文，系统会自动提取职责、必备技能与加分项
+          粘贴目标岗位的招聘原文，用于简历定向优化与模拟面试出题
         </p>
       </div>
       <el-button type="primary" :icon="Plus" @click="openCreate">
@@ -251,7 +255,7 @@ async function handleDelete(item) {
         <template #empty>
           <h3 class="state__title">还没有目标岗位</h3>
           <p class="state__text">
-            把想投递的岗位 JD 原文粘贴进来，系统会提取岗位要求，用于简历匹配与模拟面试出题。
+            把想投递的岗位 JD 原文粘贴进来，用于简历定向优化与模拟面试出题。
           </p>
           <el-button type="primary" @click="openCreate">
             新建岗位
@@ -266,7 +270,6 @@ async function handleDelete(item) {
             <div class="item__main">
               <div class="item__title">
                 <span class="item__name">{{ item.jobName }}</span>
-                <AnalysisStateTag :analyzed="item.analyzed" :stale="item.stale" />
               </div>
               <div class="item__meta">
                 <template v-if="item.companyName">{{ item.companyName }} · </template>
@@ -274,11 +277,8 @@ async function handleDelete(item) {
               </div>
             </div>
             <div class="item__actions">
-              <el-button v-if="item.analyzed" size="small" @click="openAnalysis(item)">
-                查看分析
-              </el-button>
-              <el-button v-else size="small" type="primary" @click="openAnalysis(item, true)">
-                发起分析
+              <el-button v-if="item.applyUrl" size="small" @click="openApply(item)">
+                投递
               </el-button>
               <el-button size="small" @click="openEdit(item)">
                 编辑
@@ -333,6 +333,15 @@ async function handleDelete(item) {
           </el-form-item>
         </div>
 
+        <!-- 投递链接：必须排在 form-grid 之后——e2e 脚本按索引填弹窗前两个输入框（0=公司名、1=岗位名） -->
+        <el-form-item label="投递链接" prop="applyUrl">
+          <el-input
+            v-model="form.applyUrl"
+            maxlength="500"
+            placeholder="选填，如 https://www.example.com/job/12345；填写后列表会出现「投递」按钮"
+          />
+        </el-form-item>
+
         <el-form-item label="岗位描述" prop="description" required>
           <el-input
             v-model="form.description"
@@ -344,17 +353,6 @@ async function handleDelete(item) {
           />
         </el-form-item>
       </el-form>
-
-      <!-- 编辑模式的常驻警告条（原型 §5.5；新建时无「已有分析」可言） -->
-      <el-alert
-        v-if="editingId !== null"
-        class="tip"
-        type="warning"
-        :closable="false"
-        show-icon
-      >
-        修改岗位描述后，已有分析会标记为「基于旧版描述」，需要重新分析才能用于匹配。
-      </el-alert>
 
       <el-alert
         v-if="formError"
